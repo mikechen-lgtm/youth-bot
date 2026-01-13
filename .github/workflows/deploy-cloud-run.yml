@@ -1,0 +1,59 @@
+name: Deploy to GCP Cloud Run
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+
+env:
+  PROJECT_ID: crm-platform-479508
+  REGION: asia-east1
+  BASE_SERVICE: chatbot-poc-youth
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      SERVICE: ""
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set SERVICE name
+        run: |
+          if [ "${{ github.ref_name }}" == "main" ]; then
+            echo "SERVICE=${{ env.BASE_SERVICE }}" >> $GITHUB_ENV
+          else
+            echo "SERVICE=${{ env.BASE_SERVICE }}-staging" >> $GITHUB_ENV
+          fi
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker --quiet
+
+      - name: Build Docker image
+        run: docker build -t gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }} .
+
+      - name: Push Docker image
+        run: docker push gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }}
+
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }} \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --allow-unauthenticated
+
+      - name: Show deployment info
+        run: |
+          echo "✅ Deployed to: ${{ env.SERVICE }}"
+          echo "📌 Branch: ${{ github.ref_name }}"
+          echo "🔗 Region: ${{ env.REGION }}"

@@ -1,0 +1,8 @@
+INFO:openai_service:OpenAI client initialized
+INFO:openai_service:Using existing vector store: vs_6965d57670508191878b54fa10a094bf
+INFO:__main__:OpenAI File Search initialized successfully
+INFO:werkzeug:[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8300
+ * Running on http://10.212.134.201:8300
+INFO:werkzeug:[33mPress CTRL+C to quit[0m
