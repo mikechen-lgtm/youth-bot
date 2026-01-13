@@ -61,13 +61,13 @@
       },
     },
     server: {
-      host: 'localhost',
+      host: '0.0.0.0',
       port: 3000,
-      open: true,
-      allowedHosts: ['ocr.star-bit.io', 'localhost'],
+      open: false,
+      allowedHosts: ['localhost', '35.212.185.83'],
       hmr: {
         clientPort: 3000,
-        host: 'localhost'
+        host: '35.212.185.83'
       },
       proxy: {
         '/api': {
