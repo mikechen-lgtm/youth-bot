@@ -583,7 +583,7 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                   <span>• 建議比例 16:9</span>
                 </div>
 
-                {/* 操作按鈕 */}
+                {/* 操作按鈕 - 1:1 等寬布局 */}
                 {selectedFile && (
                   <div className="flex gap-3 pt-2">
                     {isNewSlot ? (
@@ -618,7 +618,7 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                     <button
                       onClick={cancelPreview}
                       disabled={isUploading}
-                      className="px-6 py-3 rounded-xl font-medium transition-all disabled:opacity-50"
+                      className="flex-1 flex items-center justify-center py-3 rounded-xl font-medium transition-all disabled:opacity-50"
                       style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}
                     >
                       取消
@@ -660,12 +660,12 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                           </p>
                         </div>
 
-                        {/* 保存/取消按鈕 */}
+                        {/* 保存/取消按鈕 - 1:1 等寬布局 */}
                         <div className="flex gap-3">
                           <button
                             onClick={handleSaveUrl}
                             disabled={isLoading}
-                            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-medium transition-all disabled:opacity-50"
+                            className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl font-medium transition-all disabled:opacity-50"
                             style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
                           >
                             {isLoading ? (
@@ -678,7 +678,7 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                           <button
                             onClick={handleCancelEditUrl}
                             disabled={isLoading}
-                            className="px-6 py-3.5 rounded-xl font-medium transition-all disabled:opacity-50"
+                            className="flex-1 flex items-center justify-center py-3 rounded-xl font-medium transition-all disabled:opacity-50"
                             style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}
                           >
                             取消
