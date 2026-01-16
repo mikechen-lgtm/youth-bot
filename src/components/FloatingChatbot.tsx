@@ -365,8 +365,13 @@ export function FloatingChatbot() {
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const toggleMinimize = useCallback(() => {
-    setIsMinimized(!isMinimized);
+    const willMinimize = !isMinimized;
+    setIsMinimized(willMinimize);
     setIsMaximized(false);
+    // 縮小時關閉登入視窗，避免遮擋頁面
+    if (willMinimize) {
+      setShowLoginModal(false);
+    }
   }, [isMinimized]);
 
   const toggleMaximize = useCallback(() => {
@@ -627,8 +632,10 @@ export function FloatingChatbot() {
                 </div>
               </CardContent>
             )}
-            {/* 登入彈窗 - 放在Card內部，跟隨聊天框移動 */}
-            <LoginModal open={showLoginModal} onOpenChange={setShowLoginModal} />
+            {/* 登入彈窗 - 放在Card內部，跟隨聊天框移動，縮小時隱藏 */}
+            {!isMinimized && (
+              <LoginModal open={showLoginModal} onOpenChange={setShowLoginModal} />
+            )}
           </Card>
         </div>
       </>
