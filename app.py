@@ -1,4 +1,4 @@
-"""Flask application that manages surveys backed by SQLite."""
+"""Flask application that manages surveys backed by MySQL."""
 
 from __future__ import annotations
 
@@ -49,7 +49,7 @@ DIST_DIR = os.path.join(BASE_DIR, "dist")
 
 def _default_storage_base() -> str:
     """
-    Determine where to place writable artifacts (SQLite, uploads).
+    Determine where to place writable artifacts (uploads).
 
     When running on Vercel or other serverless providers, the project directory
     is read-only and we must fall back to a tmp filesystem.
@@ -62,45 +62,9 @@ def _default_storage_base() -> str:
 STORAGE_BASE = _default_storage_base()
 
 
-def _resolve_database_url() -> str:
-    """
-    Determine which database connection string to use.
-
-    Priority:
-    1. Vercel managed Postgres environment variables.
-    2. Local SQLite file (development fallback only).
-    """
-    vercel_pg_candidates = [
-        os.getenv("POSTGRES_URL"),
-        os.getenv("POSTGRES_PRISMA_URL"),
-        os.getenv("POSTGRES_URL_NON_POOLING"),
-    ]
-    for candidate in vercel_pg_candidates:
-        if candidate:
-            return candidate
-
-    default_sqlite = os.getenv("SQLITE_PATH") or os.path.join(STORAGE_BASE, "app.sqlite3")
-    return f"sqlite:///{default_sqlite}"
-
-
-DATABASE_URL = _resolve_database_url()
-
-_ENGINE_KWARGS: Dict[str, Any] = {"future": True, "pool_pre_ping": True}
-if DATABASE_URL.startswith("sqlite"):
-    _ENGINE_KWARGS["connect_args"] = {"check_same_thread": False}
-
-engine: Engine = create_engine(DATABASE_URL, **_ENGINE_KWARGS)
-
-# MySQL connection for hero_carousel table
+# MySQL connection for all tables
 MYSQL_URL = os.getenv("MYSQL_URL", "mysql+pymysql://root:123456@localhost/youth-chat")
 mysql_engine: Engine = create_engine(MYSQL_URL, future=True, pool_pre_ping=True)
-
-
-if engine.url.get_backend_name() == "sqlite":
-
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:
-        dbapi_connection.execute("PRAGMA foreign_keys=ON")
 
 
 ASSET_ROUTE_PREFIX = os.getenv("ASSET_ROUTE_PREFIX", "/uploads")
@@ -311,207 +275,145 @@ def _no_store(response: Response) -> Response:
     return response
 
 
-def ensure_schema() -> None:
-    """Create the SQLite schema if it does not exist yet."""
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS members (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    external_id TEXT UNIQUE,
-                    display_name TEXT,
-                    avatar_url TEXT,
-                    gender TEXT,
-                    birthday TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    source TEXT,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP,
-                    last_interaction_at TIMESTAMP
+def ensure_mysql_schema() -> None:
+    """Create all MySQL tables if they do not exist yet."""
+    try:
+        with mysql_engine.begin() as conn:
+            # Members table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS members (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        external_id VARCHAR(255) UNIQUE,
+                        display_name VARCHAR(255),
+                        avatar_url TEXT,
+                        gender VARCHAR(20),
+                        birthday VARCHAR(20),
+                        email VARCHAR(255),
+                        phone VARCHAR(50),
+                        source VARCHAR(50),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        last_interaction_at DATETIME
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS surveys (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL,
-                    description TEXT,
-                    category TEXT,
-                    is_active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
+            # Surveys table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS surveys (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        name VARCHAR(255) NOT NULL,
+                        description TEXT,
+                        category VARCHAR(100),
+                        is_active TINYINT(1) DEFAULT 1,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS survey_questions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    survey_id INTEGER NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
-                    question_type TEXT NOT NULL,
-                    question_text TEXT NOT NULL,
-                    description TEXT,
-                    font_size INTEGER,
-                    options_json TEXT,
-                    is_required INTEGER DEFAULT 0,
-                    display_order INTEGER DEFAULT 0,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
+            # Survey questions table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS survey_questions (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        survey_id INT NOT NULL,
+                        question_type VARCHAR(50) NOT NULL,
+                        question_text TEXT NOT NULL,
+                        description TEXT,
+                        font_size INT,
+                        options_json TEXT,
+                        is_required TINYINT(1) DEFAULT 0,
+                        display_order INT DEFAULT 0,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS survey_responses (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    survey_id INTEGER NOT NULL REFERENCES surveys(id) ON DELETE CASCADE,
-                    member_id INTEGER REFERENCES members(id) ON DELETE SET NULL,
-                    external_id TEXT,
-                    answers_json TEXT NOT NULL,
-                    is_completed INTEGER DEFAULT 1,
-                    completed_at TIMESTAMP,
-                    source TEXT,
-                    ip_address TEXT,
-                    user_agent TEXT,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
+            # Survey responses table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS survey_responses (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        survey_id INT NOT NULL,
+                        member_id INT,
+                        external_id VARCHAR(255),
+                        answers_json TEXT NOT NULL,
+                        is_completed TINYINT(1) DEFAULT 1,
+                        completed_at DATETIME,
+                        source VARCHAR(50),
+                        ip_address VARCHAR(45),
+                        user_agent TEXT,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
+                        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS chat_sessions (
-                    id TEXT PRIMARY KEY,
-                    created_at TIMESTAMP,
-                    updated_at TIMESTAMP
+            # Chat sessions table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_sessions (
+                        id VARCHAR(255) PRIMARY KEY,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS chat_messages (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL REFERENCES chat_sessions(id) ON DELETE CASCADE,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            # Chat messages table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS chat_messages (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        session_id VARCHAR(255) NOT NULL,
+                        role VARCHAR(50) NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        INDEX idx_chat_messages_session_created (session_id, created_at),
+                        FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_chat_messages_session_created
-                ON chat_messages(session_id, created_at)
-                """
-            )
-        )
-        # Hero Images table for banner carousel (stores image data in DB)
-        conn.execute(
-            text(
-                """
-                CREATE TABLE IF NOT EXISTS hero_images (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    filename TEXT NOT NULL,
-                    content_type TEXT NOT NULL DEFAULT 'image/jpeg',
-                    image_data BLOB NOT NULL,
-                    display_order INTEGER DEFAULT 0,
-                    alt_text TEXT,
-                    is_active INTEGER DEFAULT 1,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            # Hero carousel table
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS hero_carousel (
+                        id INT AUTO_INCREMENT PRIMARY KEY,
+                        filename VARCHAR(255) NOT NULL,
+                        content_type VARCHAR(100) NOT NULL DEFAULT 'image/jpeg',
+                        image_data LONGBLOB NOT NULL,
+                        alt_text VARCHAR(500),
+                        link_url VARCHAR(500),
+                        display_order INT DEFAULT 0,
+                        is_active TINYINT(1) DEFAULT 1,
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        INDEX idx_hero_active_order (is_active, display_order)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+                    """
                 )
-                """
             )
-        )
-        conn.execute(
-            text(
-                """
-                CREATE INDEX IF NOT EXISTS idx_hero_images_active_order
-                ON hero_images(is_active, display_order)
-                """
-            )
-        )
-
-        # Check if hero_images table is empty, if so, seed from index.html Hero Banner
-        count = conn.execute(text("SELECT COUNT(*) FROM hero_images")).scalar()
-        if count == 0:
-            # Parse dist/index.html to find Hero Banner images
-            index_path = os.path.join(BASE_DIR, "dist", "index.html")
-            if os.path.exists(index_path):
-                with open(index_path, "r", encoding="utf-8") as f:
-                    html_content = f.read()
-
-                # Extract Hero Banner section (<div class="hero-slides">...</header>)
-                hero_match = re.search(
-                    r'<div class="hero-slides[^"]*"[^>]*>(.*?)</header>',
-                    html_content, re.DOTALL
-                )
-                if hero_match:
-                    hero_content = hero_match.group(1)
-
-                    # Extract all <img> src and alt attributes
-                    img_pattern = r'<img[^>]+src="([^"]+)"[^>]*alt="([^"]*)"'
-                    images = re.findall(img_pattern, hero_content)
-
-                    # Content type mapping
-                    content_type_map = {
-                        '.jpg': 'image/jpeg',
-                        '.jpeg': 'image/jpeg',
-                        '.png': 'image/png',
-                        '.webp': 'image/webp',
-                        '.gif': 'image/gif'
-                    }
-
-                    # Import each image to database
-                    for order, (src, alt_text) in enumerate(images):
-                        filename = os.path.basename(src)
-                        # src: /images/xxx.jpg → public/images/xxx.jpg
-                        image_path = os.path.join(BASE_DIR, "public", src.lstrip("/"))
-
-                        if os.path.exists(image_path):
-                            ext = os.path.splitext(filename)[1].lower()
-                            content_type = content_type_map.get(ext, 'image/jpeg')
-
-                            with open(image_path, "rb") as f:
-                                image_data = f.read()
-
-                            conn.execute(
-                                text(
-                                    """
-                                    INSERT INTO hero_images (filename, content_type, image_data, alt_text, display_order, is_active)
-                                    VALUES (:filename, :content_type, :image_data, :alt_text, :display_order, 1)
-                                    """
-                                ),
-                                {
-                                    "filename": filename,
-                                    "content_type": content_type,
-                                    "image_data": image_data,
-                                    "alt_text": alt_text,
-                                    "display_order": order
-                                }
-                            )
-                            logger.info(f"Seeded hero image from index.html: {filename} (order: {order})")
-
-                    if images:
-                        logger.info(f"Seeded {len(images)} hero images from index.html Hero Banner")
+        logger.info("MySQL schema ensured (all tables)")
+    except Exception as e:
+        logger.error(f"Failed to create MySQL schema: {e}")
 
 
-ensure_schema()
+ensure_mysql_schema()
 
 
 # Initialize OpenAI client and RAG store at startup
@@ -887,7 +789,7 @@ def ensure_chat_session(session_id: Optional[str] = None) -> str:
     """Return an existing chat session id or create a new one."""
     chat_session_id = session_id or uuid.uuid4().hex
     now = utcnow()
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         conn.execute(
             text(
                 """
@@ -903,7 +805,7 @@ def ensure_chat_session(session_id: Optional[str] = None) -> str:
 
 def save_chat_message(session_id: str, role: str, content: str) -> None:
     """Persist a chat message for a given session."""
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         conn.execute(
             text(
                 """
@@ -945,7 +847,7 @@ def fetch_chat_history(session_id: str, limit: int = 12) -> List[Dict[str, Any]]
         """
     )
 
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         rows = conn.execute(query, {"sid": session_id}).mappings().all()
 
     # Reverse to chronological order
@@ -1090,7 +992,7 @@ def api_chat():
 
 
 def fetchall(sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         return [
             dict(row)
             for row in conn.execute(text(sql), params or {}).mappings().all()
@@ -1098,13 +1000,13 @@ def fetchall(sql: str, params: Optional[Dict[str, Any]] = None) -> List[Dict[str
 
 
 def fetchone(sql: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         result = conn.execute(text(sql), params or {}).mappings().first()
         return dict(result) if result else None
 
 
 def execute(sql: str, params: Optional[Dict[str, Any]] = None) -> None:
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         conn.execute(text(sql), params or {})
 
 
@@ -1143,7 +1045,7 @@ def upsert_member(
         "last_interaction_at": now,
     }
 
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         existing = conn.execute(
             text("SELECT id FROM members WHERE external_id = :ext"),
             {"ext": external_id},
@@ -1258,7 +1160,7 @@ def register_survey_from_json(payload: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError("questions must be a list")
 
     now = utcnow()
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         result = conn.execute(
             text(
                 """
