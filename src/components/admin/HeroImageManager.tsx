@@ -665,7 +665,7 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                           <button
                             onClick={handleSaveUrl}
                             disabled={isLoading}
-                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-all disabled:opacity-50"
+                            className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-xl font-medium transition-all disabled:opacity-50"
                             style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
                           >
                             {isLoading ? (
@@ -678,7 +678,7 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                           <button
                             onClick={handleCancelEditUrl}
                             disabled={isLoading}
-                            className="px-6 py-2.5 rounded-xl font-medium transition-all disabled:opacity-50"
+                            className="px-6 py-3.5 rounded-xl font-medium transition-all disabled:opacity-50"
                             style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}
                           >
                             取消

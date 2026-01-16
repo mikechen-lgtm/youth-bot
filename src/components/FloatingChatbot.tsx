@@ -134,18 +134,18 @@ export function FloatingChatbot() {
         y: 20
       };
     } else if (isMinimized) {
-      const minWidth = isMobile ? Math.min(280, window.innerWidth - 16) : 320;
+      const minWidth = isMobile ? Math.min(280, window.innerWidth - 32) : 320;
       const minDefaultX = isMobile
-        ? (window.innerWidth - minWidth) / 2  // 手機版置中
+        ? (window.innerWidth - minWidth) / 2  // 手機版水平置中
         : window.innerWidth - minWidth - 24;
       const minDefaultY = isMobile
-        ? (window.innerHeight - 48) / 2  // 手機版垂直置中
+        ? window.innerHeight - 48 - 16  // 手機版固定在底部，留 16px 邊距
         : window.innerHeight - 48 - 24;
       return {
         width: minWidth,
         height: 48,
-        x: isMobile ? minDefaultX : (position.x || minDefaultX),  // 手機版強制置中
-        y: isMobile ? minDefaultY : (position.y || minDefaultY)   // 手機版強制置中
+        x: isMobile ? minDefaultX : (position.x || minDefaultX),
+        y: isMobile ? minDefaultY : (position.y || minDefaultY)
       };
     } else {
       // 手機版：置中顯示，桌面版：靠右下角

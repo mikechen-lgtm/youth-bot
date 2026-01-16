@@ -6,6 +6,33 @@ import { MarkdownText } from "./MarkdownText";
 import { HOTEL_PRIMARY } from "../styles/hotelTheme";
 import { SourceItem } from "../services/api";
 
+// 回饋表單 URL
+const FEEDBACK_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSeU_Ntx-uR3E6f9zLw6PBgbmdGXhRjQwMP-YzYIBgrBJ78Iyw/viewform";
+
+// 無法回答的特徵關鍵字
+const UNABLE_TO_ANSWER_KEYWORDS = [
+  "未在我的資料庫中",
+  "尚無足夠資訊",
+  "無法回答",
+  "找不到相關資訊",
+  "資料庫中沒有",
+  "超出知識庫範圍",
+  "目前資料不足",
+  "沒有相關資料",
+  "無法提供",
+  "不在我的知識範圍"
+];
+
+// 檢查訊息是否為「無法回答」的情況
+function isUnableToAnswer(message: string): boolean {
+  return UNABLE_TO_ANSWER_KEYWORDS.some(keyword => message.includes(keyword));
+}
+
+// 檢查訊息是否已包含表單連結（避免重複顯示）
+function hasFormLink(message: string): boolean {
+  return message.includes("表單") && (message.includes("http") || message.includes("填寫"));
+}
+
 interface ChatMessageProps {
   message: string;
   isUser: boolean;
@@ -45,6 +72,20 @@ export function ChatMessage({ message, isUser, timestamp, sources }: ChatMessage
           >
             {message}
           </MarkdownText>
+
+          {/* 無法回答時顯示回饋表單按鈕 */}
+          {!isUser && isUnableToAnswer(message) && !hasFormLink(message) && (
+            <div className="mt-3">
+              <a
+                href={FEEDBACK_FORM_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg cursor-pointer transition-colors no-underline font-medium text-sm"
+              >
+                📝 填寫問題回饋表單
+              </a>
+            </div>
+          )}
 
           {/* Sources section for AI messages */}
           {!isUser && sources && sources.length > 0 && (

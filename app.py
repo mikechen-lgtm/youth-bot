@@ -795,7 +795,7 @@ def ensure_chat_session(session_id: Optional[str] = None) -> str:
                 """
                 INSERT INTO chat_sessions (id, created_at, updated_at)
                 VALUES (:id, :now, :now)
-                ON CONFLICT(id) DO UPDATE SET updated_at = :now
+                ON DUPLICATE KEY UPDATE updated_at = :now
                 """
             ),
             {"id": chat_session_id, "now": now},
