@@ -9,6 +9,11 @@ interface MarkdownTextProps {
 }
 
 export function MarkdownText({ children, className, style }: MarkdownTextProps) {
+  // 清理多餘的連續空行（2個以上空行 → 1個空行）
+  const cleanedContent = children
+    .replace(/\n{2,}/g, '\n\n')           // 所有多餘空行壓縮為單一空行
+    .replace(/：\n\n/g, '：\n');          // 冒號後的空行移除（讓列表更緊湊）
+
   return (
     <div
       className={className}
@@ -21,17 +26,38 @@ export function MarkdownText({ children, className, style }: MarkdownTextProps) 
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
-          // 链接样式
-          a: ({ node, ...props }) => (
-            <a
-              {...props}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-500 hover:text-blue-700 underline cursor-pointer"
-              style={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}
-              onClick={(e) => e.stopPropagation()}
-            />
-          ),
+          // 链接样式 - 表單連結顯示為按鈕樣式
+          a: ({ node, children, ...props }) => {
+            const linkText = String(children || '');
+            const isFormLink = linkText.includes('表單') || linkText.includes('填寫') || linkText.includes('回饋');
+
+            if (isFormLink) {
+              return (
+                <a
+                  {...props}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg cursor-pointer transition-colors no-underline font-medium"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {children}
+                </a>
+              );
+            }
+
+            return (
+              <a
+                {...props}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-500 hover:text-blue-700 underline cursor-pointer"
+                style={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {children}
+              </a>
+            );
+          },
           // 代码块样式
           code: ({ node, inline, className, children, ...props }) => {
             if (inline) {
@@ -76,7 +102,7 @@ export function MarkdownText({ children, className, style }: MarkdownTextProps) 
           h6: ({ node, ...props }) => (
             <h6 className="text-xs font-bold mt-1 mb-1" {...props} />
           ),
-          // 列表样式
+          // 列表样式 - 使用 [&>p] 選擇器移除列表項內段落的多餘間距
           ul: ({ node, ...props }) => (
             <ul className="list-disc list-inside my-2 space-y-1" {...props} />
           ),
@@ -84,7 +110,7 @@ export function MarkdownText({ children, className, style }: MarkdownTextProps) 
             <ol className="list-decimal list-inside my-2 space-y-1" {...props} />
           ),
           li: ({ node, ...props }) => (
-            <li className="ml-4" {...props} />
+            <li className="ml-4 [&>p]:my-0 [&>p:first-child]:mt-0 [&>p:last-child]:mb-0" {...props} />
           ),
           // 引用块样式
           blockquote: ({ node, ...props }) => (
@@ -144,7 +170,7 @@ export function MarkdownText({ children, className, style }: MarkdownTextProps) 
           ),
         }}
       >
-        {children}
+        {cleanedContent}
       </ReactMarkdown>
     </div>
   );

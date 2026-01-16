@@ -64,11 +64,12 @@
       host: '0.0.0.0',
       port: 3000,
       open: false,
-      allowedHosts: ['localhost', '35.212.185.83'],
+      allowedHosts: ['localhost', '35.212.185.83', 'youthafterwork.com'],
       hmr: {
         clientPort: 3000,
         host: '35.212.185.83'
       },
+
       proxy: {
         '/api': {
           target: 'http://127.0.0.1:8300',

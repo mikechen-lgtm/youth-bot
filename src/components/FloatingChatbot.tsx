@@ -7,8 +7,9 @@ import { ChatWelcomeMessage } from "./ChatWelcomeMessage";
 import { ChatInput } from "./ChatInput";
 import { FixedPositionPortal } from "./FixedPositionPortal";
 import { LoginModal } from "./LoginModal";
-import { UserAvatar } from "./UserAvatar";
-import { Bot, Minus, X, MessageCircle, Maximize2, Minimize2, ChevronDown, ChevronUp } from "lucide-react";
+// UserAvatar 改為直接顯示頭像 + 登出按鈕
+import { Bot, Minus, X, MessageCircle, Maximize2, Minimize2, ChevronDown, ChevronUp, LogOut } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 import { chatAPI, SourceItem } from "../services/api";
 import { HOTEL_HEADER_GRADIENT, HOTEL_PRIMARY } from "../styles/hotelTheme";
 import { useAuth } from "../contexts/AuthContext";
@@ -32,7 +33,7 @@ export function FloatingChatbot() {
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
   const dragAnimationRef = useRef<number | null>(null);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user, logout } = useAuth();
 
   const handleLoginRequired = useCallback(() => {
     console.log('[FloatingChatbot] handleLoginRequired called, setting showLoginModal=true');
@@ -134,11 +135,17 @@ export function FloatingChatbot() {
       };
     } else if (isMinimized) {
       const minWidth = isMobile ? Math.min(280, window.innerWidth - 16) : 320;
+      const minDefaultX = isMobile
+        ? (window.innerWidth - minWidth) / 2  // 手機版置中
+        : window.innerWidth - minWidth - 24;
+      const minDefaultY = isMobile
+        ? (window.innerHeight - 48) / 2  // 手機版垂直置中
+        : window.innerHeight - 48 - 24;
       return {
         width: minWidth,
         height: 48,
-        x: position.x || (isMobile ? 8 : window.innerWidth - minWidth - 24),
-        y: position.y || window.innerHeight - 48 - 24
+        x: isMobile ? minDefaultX : (position.x || minDefaultX),  // 手機版強制置中
+        y: isMobile ? minDefaultY : (position.y || minDefaultY)   // 手機版強制置中
       };
     } else {
       // 手機版：置中顯示，桌面版：靠右下角
@@ -152,8 +159,8 @@ export function FloatingChatbot() {
       return {
         width: baseWidth,
         height: baseHeight,
-        x: position.x || defaultX,
-        y: position.y || defaultY
+        x: isMobile ? defaultX : (position.x || defaultX),  // 手機版強制置中
+        y: isMobile ? defaultY : (position.y || defaultY)   // 手機版強制置中
       };
     }
   }, [isMaximized, isMinimized, position]);
@@ -291,7 +298,13 @@ export function FloatingChatbot() {
 
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isMaximized) return;
-    
+
+    // 如果點擊的是按鈕或 Popover 觸發器，不啟動拖動
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('[data-slot="popover-trigger"]')) {
+      return;
+    }
+
     e.preventDefault();
     setIsDragging(true);
     
@@ -368,11 +381,14 @@ export function FloatingChatbot() {
   const handleReopen = useCallback(() => {
     setIsClosed(false);
     setIsMinimized(false);
-    // 設定預設位置
-    setPosition({
-      x: window.innerWidth - 480 - 24,
-      y: window.innerHeight - 500 - 24
-    });
+    // 設定預設位置 (手機版會由 getChatbotDimensions 自動置中)
+    const isMobile = window.innerWidth < 640;
+    if (!isMobile) {
+      setPosition({
+        x: window.innerWidth - 480 - 24,
+        y: window.innerHeight - 500 - 24
+      });
+    }
     if (!isAuthenticated && !isLoading) {
       setShowLoginModal(true);
     }
@@ -507,7 +523,25 @@ export function FloatingChatbot() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  {isAuthenticated && <UserAvatar />}
+                  {isAuthenticated && user && (
+                    <>
+                      <Avatar className="h-6 w-6">
+                        <AvatarImage src={user.picture} alt={user.name} />
+                        <AvatarFallback className="bg-white/20 text-white text-xs">
+                          {user.name?.charAt(0)?.toUpperCase() || '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="w-6 h-6 p-0 hover:bg-white/20 active:bg-white/30 transition-colors text-white"
+                        onClick={(e) => { e.stopPropagation(); logout(); }}
+                        title="登出"
+                      >
+                        <LogOut className="w-3 h-3" />
+                      </Button>
+                    </>
+                  )}
                   <Button
                     variant="ghost"
                     size="sm"

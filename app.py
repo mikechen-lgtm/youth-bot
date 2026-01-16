@@ -91,6 +91,10 @@ if DATABASE_URL.startswith("sqlite"):
 
 engine: Engine = create_engine(DATABASE_URL, **_ENGINE_KWARGS)
 
+# MySQL connection for hero_carousel table
+MYSQL_URL = os.getenv("MYSQL_URL", "mysql+pymysql://root:123456@localhost/youth-chat")
+mysql_engine: Engine = create_engine(MYSQL_URL, future=True, pool_pre_ping=True)
+
 
 if engine.url.get_backend_name() == "sqlite":
 
@@ -136,7 +140,7 @@ FACEBOOK_APP_ID = os.getenv("FACEBOOK_APP_ID")
 FACEBOOK_APP_SECRET = os.getenv("FACEBOOK_APP_SECRET")
 FACEBOOK_REDIRECT_URI = os.getenv("FACEBOOK_REDIRECT_URI", "http://localhost:8300/auth/facebook/callback")
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-5-mini")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Admin Configuration
@@ -155,14 +159,20 @@ def _build_system_prompt() -> str:
     # Build feedback section based on whether URL is configured
     if FEEDBACK_FORM_URL:
         feedback_section = f'''### 無法回答或提案建議時：
-當遇到以下情況，請引導使用者填寫表單：
+當遇到以下情況，**務必**引導使用者填寫回饋表單：
 - 問題超出知識庫範圍，無法回答
+- 在文件中找不到相關資訊
 - 使用者想要提案、建議或反映意見
 - 使用者有特殊需求無法透過現有服務滿足
 
-回覆範例：
-「感謝您的提問！這個問題目前不在我的服務範圍內。如果您有任何建議或想進一步反映，歡迎填寫以下表單，我們會盡快為您處理：
-👉 {FEEDBACK_FORM_URL}」
+**回覆格式（請嚴格遵守）：**
+```
+感謝您的提問！目前我的資料庫中尚無足夠資訊回答這個問題。
+
+為了讓您的問題能被相關單位看到並處理，歡迎填寫問題回饋表單：
+
+[📝 填寫問題回饋表單]({FEEDBACK_FORM_URL})
+```
 
 '''
     else:
@@ -183,7 +193,7 @@ def _build_system_prompt() -> str:
 
 ### 核心原則：
 1. **嚴格依據文件回答** — 僅引用文件中明確敘述與數字
-2. **若文件未載明** — 說明「文件未載」並提供官方聯絡窗口
+2. **若文件未載明** — 說明「資料不足」並引導填寫回饋表單（見下方「無法回答時」段落）
 3. **推薦合適方案** — 根據需求主動推薦相關資源
 4. **聯絡方式相關時才附** — 只有涉及特定承辦單位時才附上該單位聯絡方式
 
@@ -285,7 +295,7 @@ A 講座  B 聚會  C 展覽  D 戶外活動
 - 不提供法律解釋
 - 不討論政治立場或爭議議題
 - 不提供文件以外的金額、名額、評分標準
-- 對於未載明事項，回覆「文件未載明」並提供聯絡窗口'''
+- 對於未載明事項，務必引導填寫回饋表單（見上方「無法回答或提案建議時」段落）'''
 
 
 SYSTEM_PROMPT = _build_system_prompt()
@@ -535,6 +545,43 @@ def admin_required(f):
     return decorated_function
 
 
+def validate_url(url: Optional[str]) -> tuple[bool, Optional[str]]:
+    """
+    驗證 URL 格式（必須以 http:// 或 https:// 開頭）
+
+    Args:
+        url: 要驗證的 URL（可為 None 或空字串）
+
+    Returns:
+        (is_valid, error_message)
+    """
+    if not url or not url.strip():
+        # 空值視為合法（表示無連結）
+        return True, None
+
+    url = url.strip()
+
+    # 檢查 URL 格式：必須以 http:// 或 https:// 開頭
+    url_pattern = re.compile(
+        r'^https?://'  # http:// 或 https://
+        r'(?:(?:[A-Z0-9](?:[A-Z0-9-]{0,61}[A-Z0-9])?\.)+[A-Z]{2,6}\.?|'  # 網域
+        r'localhost|'  # localhost
+        r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'  # IP
+        r'(?::\d+)?'  # 可選的 port
+        r'(?:/?|[/?]\S+)$',  # 路徑
+        re.IGNORECASE
+    )
+
+    if not url_pattern.match(url):
+        return False, "URL 格式錯誤，必須以 http:// 或 https:// 開頭"
+
+    # 檢查長度
+    if len(url) > 500:
+        return False, "URL 長度不能超過 500 字元"
+
+    return True, None
+
+
 @app.post("/api/admin/login")
 def admin_login():
     """Admin login endpoint."""
@@ -573,12 +620,12 @@ def admin_check():
 @app.get("/api/hero-images")
 def get_hero_images():
     """Get all active hero images (public endpoint)."""
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         rows = conn.execute(
             text(
                 """
-                SELECT id, alt_text, display_order
-                FROM hero_images
+                SELECT id, alt_text, display_order, link_url
+                FROM hero_carousel
                 WHERE is_active = 1
                 ORDER BY display_order ASC
                 """
@@ -592,7 +639,8 @@ def get_hero_images():
             "id": row["id"],
             "url": f"/api/hero-images/{row['id']}/data",
             "alt_text": row["alt_text"],
-            "display_order": row["display_order"]
+            "display_order": row["display_order"],
+            "link_url": row["link_url"]
         })
     return jsonify({"success": True, "images": images})
 
@@ -602,9 +650,9 @@ def get_hero_image_data(image_id: int):
     """Serve hero image binary data."""
     from urllib.parse import quote
 
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         row = conn.execute(
-            text("SELECT image_data, content_type, filename FROM hero_images WHERE id = :id AND is_active = 1"),
+            text("SELECT image_data, content_type, filename FROM hero_carousel WHERE id = :id AND is_active = 1"),
             {"id": image_id}
         ).mappings().first()
 
@@ -628,13 +676,14 @@ def get_hero_image_data(image_id: int):
 @admin_required
 def admin_get_hero_images():
     """Get all hero images (admin endpoint)."""
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         rows = conn.execute(
             text(
                 """
                 SELECT id, filename, content_type, alt_text,
-                       display_order, is_active, created_at, updated_at
-                FROM hero_images
+                       display_order, is_active, link_url,
+                       created_at, updated_at
+                FROM hero_carousel
                 ORDER BY display_order ASC
                 """
             )
@@ -650,6 +699,7 @@ def admin_get_hero_images():
             "alt_text": row["alt_text"],
             "display_order": row["display_order"],
             "is_active": row["is_active"],
+            "link_url": row["link_url"],
             "created_at": row["created_at"],
             "updated_at": row["updated_at"]
         })
@@ -680,16 +730,22 @@ def admin_upload_hero_image():
     # Get alt_text from form
     alt_text = request.form.get("alt_text", "")
 
+    # Get link_url from form and validate
+    link_url = request.form.get("link_url", "")
+    is_valid, error_msg = validate_url(link_url)
+    if not is_valid:
+        return jsonify({"success": False, "error": error_msg}), 400
+
     # Get next display order and insert into database
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         result = conn.execute(
-            text("SELECT COALESCE(MAX(display_order), -1) + 1 as next_order FROM hero_images")
+            text("SELECT COALESCE(MAX(display_order), -1) + 1 as next_order FROM hero_carousel")
         ).mappings().first()
         next_order = result["next_order"] if result else 0
 
         # Check if we already have 8 images
         count_result = conn.execute(
-            text("SELECT COUNT(*) as count FROM hero_images")
+            text("SELECT COUNT(*) as count FROM hero_carousel")
         ).mappings().first()
         if count_result and count_result["count"] >= 8:
             return jsonify({"success": False, "error": "最多只能上傳 8 張圖片"}), 400
@@ -699,8 +755,8 @@ def admin_upload_hero_image():
         conn.execute(
             text(
                 """
-                INSERT INTO hero_images (filename, content_type, image_data, alt_text, display_order, created_at, updated_at)
-                VALUES (:filename, :content_type, :image_data, :alt_text, :order, :now, :now)
+                INSERT INTO hero_carousel (filename, content_type, image_data, alt_text, link_url, display_order, created_at, updated_at)
+                VALUES (:filename, :content_type, :image_data, :alt_text, :link_url, :order, :now, :now)
                 """
             ),
             {
@@ -708,6 +764,7 @@ def admin_upload_hero_image():
                 "content_type": file.content_type,
                 "image_data": file_data,
                 "alt_text": alt_text,
+                "link_url": link_url.strip() if link_url else None,
                 "order": next_order,
                 "now": now,
             },
@@ -715,7 +772,7 @@ def admin_upload_hero_image():
 
         # Get the inserted image
         inserted = conn.execute(
-            text("SELECT id, alt_text, display_order FROM hero_images WHERE display_order = :order"),
+            text("SELECT id, alt_text, display_order, link_url FROM hero_carousel WHERE display_order = :order"),
             {"order": next_order}
         ).mappings().first()
 
@@ -726,7 +783,8 @@ def admin_upload_hero_image():
                 "id": inserted["id"],
                 "url": f"/api/hero-images/{inserted['id']}/data",
                 "alt_text": inserted["alt_text"],
-                "display_order": inserted["display_order"]
+                "display_order": inserted["display_order"],
+                "link_url": inserted["link_url"]
             }
         })
     return jsonify({"success": False, "error": "上傳失敗"}), 500
@@ -736,10 +794,10 @@ def admin_upload_hero_image():
 @admin_required
 def admin_delete_hero_image(image_id: int):
     """Delete a hero image from database."""
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         # Check if image exists
         image = conn.execute(
-            text("SELECT id FROM hero_images WHERE id = :id"),
+            text("SELECT id FROM hero_carousel WHERE id = :id"),
             {"id": image_id}
         ).mappings().first()
 
@@ -748,7 +806,7 @@ def admin_delete_hero_image(image_id: int):
 
         # Delete from database
         conn.execute(
-            text("DELETE FROM hero_images WHERE id = :id"),
+            text("DELETE FROM hero_carousel WHERE id = :id"),
             {"id": image_id}
         )
 
@@ -765,12 +823,12 @@ def admin_reorder_hero_images():
     if not isinstance(order, list):
         return jsonify({"success": False, "error": "order 必須是陣列"}), 400
 
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         for idx, image_id in enumerate(order):
             conn.execute(
                 text(
                     """
-                    UPDATE hero_images
+                    UPDATE hero_carousel
                     SET display_order = :order, updated_at = :now
                     WHERE id = :id
                     """
@@ -798,14 +856,24 @@ def admin_update_hero_image(image_id: int):
         updates.append("is_active = :is_active")
         params["is_active"] = 1 if data["is_active"] else 0
 
+    if "link_url" in data:
+        link_url = data["link_url"]
+        # 驗證 URL
+        is_valid, error_msg = validate_url(link_url)
+        if not is_valid:
+            return jsonify({"success": False, "error": error_msg}), 400
+
+        updates.append("link_url = :link_url")
+        params["link_url"] = link_url.strip() if link_url else None
+
     if not updates:
         return jsonify({"success": False, "error": "沒有要更新的欄位"}), 400
 
     updates.append("updated_at = :now")
 
-    with engine.begin() as conn:
+    with mysql_engine.begin() as conn:
         result = conn.execute(
-            text(f"UPDATE hero_images SET {', '.join(updates)} WHERE id = :id"),
+            text(f"UPDATE hero_carousel SET {', '.join(updates)} WHERE id = :id"),
             params
         )
 
@@ -900,6 +968,15 @@ def format_sse(payload: Dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
+# Regex pattern to remove OpenAI file search citation markers (e.g., fileciteturn0file5turn0file12)
+_CITATION_PATTERN = re.compile(r"fileciteturn\d+file\d+(?:turn\d+file\d+)*")
+
+
+def strip_citations(text: str) -> str:
+    """Remove OpenAI file search citation markers from text."""
+    return _CITATION_PATTERN.sub("", text)
+
+
 @app.post("/api/chat")
 @app.post("/chat")
 def api_chat():
@@ -956,14 +1033,17 @@ def api_chat():
                 if chunk["type"] == "text":
                     delta = chunk["content"]
                     if delta:
-                        accumulated.append(delta)
-                        yield format_sse(
-                            {
-                                "type": "text",
-                                "content": delta,
-                                "session_id": session_id,
-                            }
-                        )
+                        # Remove citation markers before sending to client
+                        clean_delta = strip_citations(delta)
+                        accumulated.append(clean_delta)
+                        if clean_delta:
+                            yield format_sse(
+                                {
+                                    "type": "text",
+                                    "content": clean_delta,
+                                    "session_id": session_id,
+                                }
+                            )
                 elif chunk["type"] == "sources":
                     sources = chunk["content"]
                 elif chunk["type"] == "end":
@@ -1783,6 +1863,9 @@ def auth_line_callback():
             source="line"
         )
 
+        # 清除舊的 session 資料，確保乾淨的登入狀態
+        session.clear()
+
         session["user"] = {
             "member_id": member_id,
             "provider": "line",
@@ -1790,6 +1873,8 @@ def auth_line_callback():
             "name": profile.get("displayName")
         }
         session.permanent = True
+
+        logger.info(f"[LINE Login] User logged in: {profile.get('displayName')} (member_id: {member_id}, external_id: line_{profile['userId']})")
 
         return redirect("/?login=success")
 
@@ -1871,6 +1956,10 @@ def auth_facebook_callback():
 @app.get("/api/user")
 def api_get_user():
     """Return current authenticated user or 401."""
+    # Debug: 記錄 session 資訊
+    from flask import request as flask_request
+    logger.info(f"[/api/user] Session ID cookie: {flask_request.cookies.get('session', 'N/A')[:20] if flask_request.cookies.get('session') else 'None'}...")
+    logger.info(f"[/api/user] Session data: {dict(session) if session else 'Empty'}")
     if "user" in session:
         user_data = session["user"].copy()
         # 從資料庫讀取頭像 (避免 session cookie 過大導致 431 錯誤)

@@ -17,6 +17,9 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkUrlError, setLinkUrlError] = useState("");
+  const [isEditingUrl, setIsEditingUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // 確認彈窗狀態
   const [showConfirmModal, setShowConfirmModal] = useState(false);
@@ -64,6 +67,29 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
   const isNewSlot = activeTab >= images.length;
   const canAddMore = images.length < MAX_IMAGES;
   const canDelete = images.length > MIN_IMAGES;
+
+  // URL 客戶端驗證
+  const validateLinkUrl = (url: string): boolean => {
+    if (!url.trim()) {
+      // 空值合法
+      setLinkUrlError("");
+      return true;
+    }
+
+    const urlPattern = /^https?:\/\/.+/i;
+    if (!urlPattern.test(url.trim())) {
+      setLinkUrlError("URL 必須以 http:// 或 https:// 開頭");
+      return false;
+    }
+
+    if (url.length > 500) {
+      setLinkUrlError("URL 長度不能超過 500 字元");
+      return false;
+    }
+
+    setLinkUrlError("");
+    return true;
+  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -122,11 +148,20 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
   const executeUpload = async () => {
     if (!selectedFile) return;
 
+    // 驗證 URL
+    if (!validateLinkUrl(linkUrl)) {
+      return;
+    }
+
     setIsUploading(true);
     setError("");
 
     try {
-      const result = await adminApi.uploadImage(selectedFile, `輪播 ${images.length + 1}`);
+      const result = await adminApi.uploadImage(
+        selectedFile,
+        `輪播 ${images.length + 1}`,
+        linkUrl.trim() || undefined
+      );
       if (result.success) {
         // 清理預覽 URL
         if (previewUrl) {
@@ -134,6 +169,8 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
         }
         setSelectedFile(null);
         setPreviewUrl(null);
+        setLinkUrl("");
+        setLinkUrlError("");
         // 重新載入圖片並選擇最後一張
         await fetchImages(true);
       } else {
@@ -150,12 +187,21 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
   const executeReplace = async () => {
     if (!selectedFile || !currentImage) return;
 
+    // 驗證 URL
+    if (!validateLinkUrl(linkUrl)) {
+      return;
+    }
+
     setIsUploading(true);
     setError("");
 
     try {
       await adminApi.deleteImage(currentImage.id);
-      const result = await adminApi.uploadImage(selectedFile, currentImage.alt_text || `輪播 ${activeTab + 1}`);
+      const result = await adminApi.uploadImage(
+        selectedFile,
+        currentImage.alt_text || `輪播 ${activeTab + 1}`,
+        linkUrl.trim() || undefined
+      );
       if (result.success) {
         // 清理預覽 URL
         if (previewUrl) {
@@ -163,6 +209,8 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
         }
         setSelectedFile(null);
         setPreviewUrl(null);
+        setLinkUrl("");
+        setLinkUrlError("");
         await fetchImages();
       } else {
         setError(result.error || "替換失敗");
@@ -202,6 +250,9 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
       setActiveTab(images.length);
       setSelectedFile(null);
       setPreviewUrl(null);
+      setIsEditingUrl(false);
+      setLinkUrl("");
+      setLinkUrlError("");
     }
   };
 
@@ -212,11 +263,59 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
     }
     setSelectedFile(null);
     setPreviewUrl(null);
+    setLinkUrl("");
+    setLinkUrlError("");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
     if (isNewSlot && images.length > 0) {
       setActiveTab(images.length - 1);
+    }
+  };
+
+  // 開始編輯 URL
+  const handleEditUrl = () => {
+    if (currentImage) {
+      setLinkUrl(currentImage.link_url || "");
+      setLinkUrlError("");
+      setIsEditingUrl(true);
+    }
+  };
+
+  // 取消編輯 URL
+  const handleCancelEditUrl = () => {
+    setIsEditingUrl(false);
+    setLinkUrl("");
+    setLinkUrlError("");
+  };
+
+  // 保存 URL
+  const handleSaveUrl = async () => {
+    if (!currentImage) return;
+
+    // 驗證 URL
+    if (!validateLinkUrl(linkUrl)) {
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const result = await adminApi.updateImage(currentImage.id, {
+        link_url: linkUrl.trim() || undefined
+      });
+
+      if (result.success) {
+        setIsEditingUrl(false);
+        await fetchImages();
+      } else {
+        setError(result.error || "更新失敗");
+      }
+    } catch {
+      setError("更新失敗");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -308,6 +407,9 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                         setActiveTab(index);
                         setSelectedFile(null);
                         setPreviewUrl(null);
+                        setLinkUrl(images[index].link_url || "");
+                        setLinkUrlError("");
+                        setIsEditingUrl(false);
                       }}
                       style={{
                         backgroundColor: isActive ? '#f97316' : '#ffffff',
@@ -396,9 +498,16 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                         className="w-full h-full object-cover"
                       />
                       <div className="absolute bottom-0 left-0 right-0 p-4" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.6), transparent)' }}>
-                        <span className="text-white text-sm font-medium">
-                          {currentImage.alt_text || `輪播 ${activeTab + 1}`}
-                        </span>
+                        <div className="flex items-center justify-between">
+                          <span className="text-white text-sm font-medium">
+                            {currentImage.alt_text || `輪播 ${activeTab + 1}`}
+                          </span>
+                          {currentImage.link_url && (
+                            <span className="text-white text-xs bg-blue-500 px-2 py-1 rounded">
+                              已設定連結
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ) : (
@@ -435,6 +544,37 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                   <Upload size={20} />
                   <span className="font-medium">點擊上傳圖片</span>
                 </label>
+
+                {/* URL 輸入欄位 - 只在新增圖片或選擇新檔案替換時顯示 */}
+                {(isNewSlot || selectedFile) && (
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#374151' }}>
+                      跳轉連結（選填）
+                    </label>
+                    <input
+                      type="url"
+                      value={linkUrl}
+                      onChange={(e) => {
+                        setLinkUrl(e.target.value);
+                        validateLinkUrl(e.target.value);
+                      }}
+                      placeholder="https://example.com"
+                      className="w-full px-4 py-2 rounded-lg border transition-all"
+                      style={{
+                        borderColor: linkUrlError ? '#ef4444' : '#e5e7eb',
+                        backgroundColor: '#ffffff',
+                      }}
+                    />
+                    {linkUrlError && (
+                      <p className="mt-1 text-sm" style={{ color: '#ef4444' }}>
+                        {linkUrlError}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs" style={{ color: '#94a3b8' }}>
+                      設定後，點擊輪播圖將在新分頁開啟此連結
+                    </p>
+                  </div>
+                )}
 
                 {/* 格式說明 */}
                 <div className="flex items-center gap-6 text-sm" style={{ color: '#94a3b8' }}>
@@ -486,8 +626,87 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
                   </div>
                 )}
 
+                {/* 編輯 URL 區域 */}
+                {!isNewSlot && currentImage && !selectedFile && (
+                  <div className="space-y-3">
+                    {isEditingUrl ? (
+                      <>
+                        {/* URL 編輯欄位 */}
+                        <div>
+                          <label className="block text-sm font-medium mb-2" style={{ color: '#374151' }}>
+                            跳轉連結（選填）
+                          </label>
+                          <input
+                            type="url"
+                            value={linkUrl}
+                            onChange={(e) => {
+                              setLinkUrl(e.target.value);
+                              validateLinkUrl(e.target.value);
+                            }}
+                            placeholder="https://example.com"
+                            className="w-full px-4 py-2 rounded-lg border transition-all"
+                            style={{
+                              borderColor: linkUrlError ? '#ef4444' : '#e5e7eb',
+                              backgroundColor: '#ffffff',
+                            }}
+                          />
+                          {linkUrlError && (
+                            <p className="mt-1 text-sm" style={{ color: '#ef4444' }}>
+                              {linkUrlError}
+                            </p>
+                          )}
+                          <p className="mt-1 text-xs" style={{ color: '#94a3b8' }}>
+                            設定後，點擊輪播圖將在新分頁開啟此連結
+                          </p>
+                        </div>
+
+                        {/* 保存/取消按鈕 */}
+                        <div className="flex gap-3">
+                          <button
+                            onClick={handleSaveUrl}
+                            disabled={isLoading}
+                            className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl font-medium transition-all disabled:opacity-50"
+                            style={{ backgroundColor: '#3b82f6', color: '#ffffff' }}
+                          >
+                            {isLoading ? (
+                              <RefreshCw size={16} className="animate-spin" />
+                            ) : (
+                              <Check size={16} />
+                            )}
+                            <span>{isLoading ? "儲存中..." : "儲存"}</span>
+                          </button>
+                          <button
+                            onClick={handleCancelEditUrl}
+                            disabled={isLoading}
+                            className="px-6 py-2.5 rounded-xl font-medium transition-all disabled:opacity-50"
+                            style={{ backgroundColor: '#f1f5f9', color: '#64748b' }}
+                          >
+                            取消
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <button
+                        onClick={handleEditUrl}
+                        disabled={isLoading}
+                        className="w-full py-3 rounded-xl font-medium transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                        style={{
+                          backgroundColor: '#eff6ff',
+                          color: '#3b82f6',
+                          border: '1px solid #bfdbfe',
+                        }}
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                        </svg>
+                        編輯跳轉連結
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {/* 刪除按鈕 */}
-                {!isNewSlot && currentImage && canDelete && !selectedFile && (
+                {!isNewSlot && currentImage && canDelete && !selectedFile && !isEditingUrl && (
                   <button
                     onClick={handleDelete}
                     disabled={isLoading}

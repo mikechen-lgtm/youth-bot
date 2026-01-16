@@ -40,7 +40,7 @@ export function ChatMessage({ message, isUser, timestamp, sources }: ChatMessage
           overflowWrap: 'break-word'
         }}>
           <MarkdownText
-            className="whitespace-pre-wrap select-text cursor-text"
+            className="select-text cursor-text"
             style={{ userSelect: 'text', WebkitUserSelect: 'text' }}
           >
             {message}

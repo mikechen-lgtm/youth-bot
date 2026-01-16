@@ -8,6 +8,7 @@ export interface HeroImage {
   alt_text: string;
   display_order: number;
   is_active?: number;
+  link_url?: string | null;
   gcs_object_name?: string;
   created_at?: string;
   updated_at?: string;
@@ -88,12 +89,15 @@ class AdminApiService {
   /**
    * Upload a new hero image
    */
-  async uploadImage(file: File, altText?: string): Promise<ApiResponse> {
+  async uploadImage(file: File, altText?: string, linkUrl?: string): Promise<ApiResponse> {
     try {
       const formData = new FormData();
       formData.append("file", file);
       if (altText) {
         formData.append("alt_text", altText);
+      }
+      if (linkUrl) {
+        formData.append("link_url", linkUrl);
       }
 
       const response = await fetch(`${this.baseUrl}/api/admin/hero-images`, {
@@ -150,7 +154,7 @@ class AdminApiService {
    */
   async updateImage(
     imageId: number,
-    data: { alt_text?: string; is_active?: boolean }
+    data: { alt_text?: string; is_active?: boolean; link_url?: string }
   ): Promise<ApiResponse> {
     try {
       const response = await fetch(

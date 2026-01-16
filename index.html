@@ -173,6 +173,11 @@
                 aspect-ratio: 16/9;
             }
         }
+        /* 為有連結的輪播圖添加 hover 效果 */
+        .hero-slide a:hover img {
+            transform: scale(1.02);
+            transition: transform 0.3s ease;
+        }
     </style>
 
     <!-- 核心理念 -->
@@ -359,6 +364,41 @@
     <!-- 頁腳 -->
     <footer class="py-12 px-4 bg-dark text-white">
         <div class="container mx-auto max-w-6xl">
+            <!-- 意見回饋區塊 -->
+            <div class="border-b border-white border-opacity-20 pb-10 mb-10">
+                <h3 class="text-2xl font-bold text-center mb-8" data-aos="fade-up">意見回饋</h3>
+                <div class="flex flex-col lg:flex-row gap-8 items-start">
+                    <!-- 左側說明 -->
+                    <div class="lg:w-1/3" data-aos="fade-right">
+                        <p class="text-white opacity-90 text-lg mb-4">
+                            有任何問題或建議嗎？
+                        </p>
+                        <p class="text-white opacity-70 mb-4">
+                            歡迎填寫右方表單，讓我們知道您的想法。您的意見將成為網站內容與青年局政策調整的重要參考。
+                        </p>
+                        <p class="text-white opacity-50 text-sm">
+                            <i class="fa fa-lock mr-2"></i>您的資料僅供內部參考使用
+                        </p>
+                    </div>
+                    <!-- 右側 Google Form -->
+                    <div class="lg:w-2/3 w-full" data-aos="fade-left">
+                        <div class="bg-white rounded-xl overflow-hidden shadow-lg">
+                            <iframe
+                                src="https://docs.google.com/forms/d/e/1FAIpQLSeU_Ntx-uR3E6f9zLw6PBgbmdGXhRjQwMP-YzYIBgrBJ78Iyw/viewform?embedded=true"
+                                width="100%"
+                                height="550"
+                                frameborder="0"
+                                marginheight="0"
+                                marginwidth="0"
+                                loading="lazy"
+                                title="意見回饋表單">
+                                載入中…
+                            </iframe>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="flex flex-col md:flex-row justify-between items-center">
                 <div class="mb-8 md:mb-0">
                     <h3 class="text-2xl font-bold mb-2">AI × 公共參與</h3>
@@ -400,6 +440,13 @@
                 let autoplayInterval = null;
                 const AUTOPLAY_DELAY = 5000; // 5秒
 
+                // 預設圖片
+                const DEFAULT_IMAGE = {
+                    id: 0,
+                    url: '/images/青年局_banner.jpg',
+                    alt_text: '青年局 Banner'
+                };
+
                 // 載入圖片
                 async function loadImages() {
                     try {
@@ -408,26 +455,61 @@
 
                         if (data.success && data.images && data.images.length > 0) {
                             images = data.images;
-                            renderSlides();
-                            renderDots();
-                            startAutoplay();
+                        } else {
+                            // 資料庫沒有圖片，使用預設
+                            images = [DEFAULT_IMAGE];
                         }
-                        // 如果沒有圖片，保持預設圖片
                     } catch (error) {
                         console.error('Failed to load hero images:', error);
-                        // 保持預設圖片
+                        // API 失敗，使用預設圖片
+                        images = [DEFAULT_IMAGE];
                     }
+
+                    renderSlides();
+                    renderDots();
+                    startAutoplay();
+                }
+
+                // XSS 防護：HTML 轉義函數
+                function escapeHtml(text) {
+                    const map = {
+                        '&': '&amp;',
+                        '<': '&lt;',
+                        '>': '&gt;',
+                        '"': '&quot;',
+                        "'": '&#039;'
+                    };
+                    return String(text).replace(/[&<>"']/g, m => map[m]);
                 }
 
                 // 渲染輪播圖片
                 function renderSlides() {
-                    slidesContainer.innerHTML = images.map((img, index) => `
-                        <div class="hero-slide ${index === 0 ? 'active' : ''}">
-                            <img src="${img.url}"
-                                 alt="${img.alt_text || 'Hero Banner'}"
-                                 class="w-full h-full object-cover">
-                        </div>
-                    `).join('');
+                    slidesContainer.innerHTML = images.map((img, index) => {
+                        // 如果有 link_url，用 <a> 包裹
+                        if (img.link_url && img.link_url.trim()) {
+                            return `
+                                <div class="hero-slide ${index === 0 ? 'active' : ''}">
+                                    <a href="${escapeHtml(img.link_url)}"
+                                       target="_blank"
+                                       rel="noopener noreferrer"
+                                       class="block w-full h-full cursor-pointer">
+                                        <img src="${escapeHtml(img.url)}"
+                                             alt="${escapeHtml(img.alt_text || 'Hero Banner')}"
+                                             class="w-full h-full object-cover">
+                                    </a>
+                                </div>
+                            `;
+                        } else {
+                            // 無連結，僅顯示圖片
+                            return `
+                                <div class="hero-slide ${index === 0 ? 'active' : ''}">
+                                    <img src="${escapeHtml(img.url)}"
+                                         alt="${escapeHtml(img.alt_text || 'Hero Banner')}"
+                                         class="w-full h-full object-cover">
+                                </div>
+                            `;
+                        }
+                    }).join('');
                 }
 
                 // 渲染導航圓點

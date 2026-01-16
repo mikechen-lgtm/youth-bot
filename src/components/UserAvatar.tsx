@@ -47,7 +47,7 @@ export function UserAvatar() {
           </Avatar>
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-64" align="end">
+      <PopoverContent className="w-64 z-[10000]" align="end">
         <div className="flex flex-col gap-3">
           <div className="flex items-center gap-3">
             <Avatar className="h-12 w-12">
