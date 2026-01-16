@@ -64,10 +64,10 @@
       host: '0.0.0.0',
       port: 3000,
       open: false,
-      allowedHosts: ['localhost', '35.212.185.83', 'youthafterwork.com'],
+      allowedHosts: ['localhost', '35.212.208.67', 'youthafterwork.com'],
       hmr: {
         clientPort: 3000,
-        host: '35.212.185.83'
+        host: '35.212.208.67'
       },
 
       proxy: {
