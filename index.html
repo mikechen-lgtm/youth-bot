@@ -111,13 +111,8 @@
     <!-- 主視覺區 - Hero Banner 輪播 -->
     <header id="hero-carousel" class="pt-12 md:pt-14 relative overflow-hidden bg-gray-100">
         <!-- 輪播容器 -->
-        <div class="hero-slides relative w-full" style="aspect-ratio: 1920/600;">
-            <!-- 預設圖片 (當 API 無法載入時顯示) -->
-            <div class="hero-slide active">
-                <img src="/images/青年局_banner.jpg"
-                     alt="青年局 Banner"
-                     class="w-full h-full object-cover">
-            </div>
+        <div class="hero-slides relative w-full bg-gradient-to-r from-primary/20 to-secondary/20" style="aspect-ratio: 1920/600;">
+            <!-- 由 JavaScript 動態載入，載入前顯示漸層背景 -->
         </div>
 
         <!-- 左右箭頭 -->
