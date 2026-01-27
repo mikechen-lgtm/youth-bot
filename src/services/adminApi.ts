@@ -2,6 +2,8 @@
  * Admin API service for Hero Banner management
  */
 
+import { csrfManager } from "../utils/csrf";
+
 export interface HeroImage {
   id: number;
   url: string;
@@ -21,6 +23,7 @@ export interface ApiResponse<T = unknown> {
   images?: HeroImage[];
   image?: HeroImage;
   authenticated?: boolean;
+  csrf_token?: string;
 }
 
 class AdminApiService {
@@ -34,7 +37,12 @@ class AdminApiService {
       const response = await fetch(`${this.baseUrl}/api/admin/check`, {
         credentials: "include",
       });
-      return await response.json();
+      const data = await response.json();
+      // Update CSRF token if provided
+      if (data.csrf_token) {
+        csrfManager.setToken(data.csrf_token);
+      }
+      return data;
     } catch {
       return { success: false, error: "Network error" };
     }
@@ -45,13 +53,23 @@ class AdminApiService {
    */
   async login(username: string, password: string): Promise<ApiResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/admin/login`, {
+      // Fetch CSRF token first
+      await csrfManager.fetchToken();
+
+      const response = await csrfManager.protectedFetch(`${this.baseUrl}/api/admin/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({ username, password }),
       });
-      return await response.json();
+
+      const data = await response.json();
+
+      // Store CSRF token from login response
+      if (data.success && data.csrf_token) {
+        csrfManager.setToken(data.csrf_token);
+      }
+
+      return data;
     } catch {
       return { success: false, error: "Network error" };
     }
@@ -62,11 +80,17 @@ class AdminApiService {
    */
   async logout(): Promise<ApiResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/admin/logout`, {
+      const response = await csrfManager.protectedFetch(`${this.baseUrl}/api/admin/logout`, {
         method: "POST",
-        credentials: "include",
       });
-      return await response.json();
+      const data = await response.json();
+
+      // Clear CSRF token on logout
+      if (data.success) {
+        csrfManager.clearToken();
+      }
+
+      return data;
     } catch {
       return { success: false, error: "Network error" };
     }
@@ -100,9 +124,8 @@ class AdminApiService {
         formData.append("link_url", linkUrl);
       }
 
-      const response = await fetch(`${this.baseUrl}/api/admin/hero-images`, {
+      const response = await csrfManager.protectedFetch(`${this.baseUrl}/api/admin/hero-images`, {
         method: "POST",
-        credentials: "include",
         body: formData,
       });
       return await response.json();
@@ -116,11 +139,10 @@ class AdminApiService {
    */
   async deleteImage(imageId: number): Promise<ApiResponse> {
     try {
-      const response = await fetch(
+      const response = await csrfManager.protectedFetch(
         `${this.baseUrl}/api/admin/hero-images/${imageId}`,
         {
           method: "DELETE",
-          credentials: "include",
         }
       );
       return await response.json();
@@ -134,12 +156,11 @@ class AdminApiService {
    */
   async reorderImages(order: number[]): Promise<ApiResponse> {
     try {
-      const response = await fetch(
+      const response = await csrfManager.protectedFetch(
         `${this.baseUrl}/api/admin/hero-images/reorder`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
           body: JSON.stringify({ order }),
         }
       );
@@ -157,12 +178,11 @@ class AdminApiService {
     data: { alt_text?: string; is_active?: boolean; link_url?: string }
   ): Promise<ApiResponse> {
     try {
-      const response = await fetch(
+      const response = await csrfManager.protectedFetch(
         `${this.baseUrl}/api/admin/hero-images/${imageId}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
           body: JSON.stringify(data),
         }
       );

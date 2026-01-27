@@ -1,0 +1,21 @@
+[Unit]
+Description=RAG Data Watcher - Auto update Vector Store on file changes
+After=network.target
+
+[Service]
+Type=simple
+User=creative_design
+WorkingDirectory=/home/creative_design/youth-bot
+ExecStart=/home/creative_design/youth-bot/scripts/watch_rag_data.sh
+Restart=always
+RestartSec=5
+
+# 環境變數
+EnvironmentFile=/home/creative_design/youth-bot/.env
+
+# 日誌
+StandardOutput=append:/home/creative_design/youth-bot/logs/rag_watch.log
+StandardError=append:/home/creative_design/youth-bot/logs/rag_watch.log
+
+[Install]
+WantedBy=multi-user.target

@@ -21,7 +21,9 @@ from openai_service import (
 
 
 def _collect_files(root: Path) -> list[Path]:
-    exts = {".md", ".txt", ".pdf", ".html", ".json"}
+    # 注意：排除 .json 檔案，因為已轉換為 .md 格式以提升 RAG 檢索效果
+    # JSON 結構不適合語意搜尋，Markdown 純文字格式更佳
+    exts = {".md", ".txt", ".pdf", ".html"}
     return sorted(p for p in root.iterdir() if p.is_file() and p.suffix.lower() in exts)
 
 

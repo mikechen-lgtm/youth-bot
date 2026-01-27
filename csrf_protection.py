@@ -112,7 +112,8 @@ def csrf_protect(f: F) -> F:
         if request.method in ("GET", "HEAD", "OPTIONS"):
             return f(*args, **kwargs)
 
-        csrf = getattr(request.app, "csrf_protection", None)
+        from flask import current_app
+        csrf = getattr(current_app, "csrf_protection", None)
         if not csrf:
             return jsonify({
                 "success": False,

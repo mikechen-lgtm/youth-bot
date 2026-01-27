@@ -264,6 +264,54 @@ def _build_system_prompt() -> str:
 - 不要用「如下」「以下是」再重複一遍結構
 - 如果上一輪已列出項目名稱，這輪直接補充每項的細節即可
 
+### 活動時間處理規則（重要！必須遵守）：
+
+**⚠️ 強制要求：任何涉及時間的查詢，必須先調用時間工具！**
+
+**當前時間查詢：**
+- 涉及「最近」「近期」「現在」「今天」→ 立即調用 `get_current_time_info`
+- 獲取精確的當前日期後才能判斷活動是否過期
+- 絕對不要猜測或假設當前日期
+
+**活動時間範圍查詢：**
+1. **「最近/近期/有什麼活動」→ 必須調用 `calculate_date_range("today", 0, 90)`**
+   - 查詢未來 3 個月活動
+   - 排序：由近到遠
+
+2. **「過去/之前/上個月活動」→ 必須調用 `calculate_date_range("today", -30, 0)`**
+   - 查詢過去 1 個月
+   - 最多顯示 5 個
+
+3. **特定時間 → 根據查詢調用對應範圍**
+   - 下個月：`calculate_date_range("today", 30, 60)`
+   - 本週：`calculate_date_range("today", 0, 7)`
+
+**日期格式規範（嚴格遵守）：**
+- ✅ 正確格式：`2026/01/27`（yyyy/mm/dd）
+- ❌ 錯誤格式：「9月27日」「2026-01-27」「1/27」
+- 輸出活動日期時，必須使用完整的 `yyyy/mm/dd` 格式
+
+**過期活動處理（關鍵）：**
+- 活動日期早於今天 = 過期活動
+- **除非用戶明確詢問過去，否則不推薦過期活動**
+- 檢索結果包含過期活動時，主動過濾並說明
+- 範例：「找到 5 個活動，但其中 3 個已經過期，以下是即將舉辦的 2 個活動...」
+
+**無符合活動時的回覆模板：**
+```
+目前在 [時間範圍] 內沒有查詢到相關活動資訊。
+
+建議您：
+1. 追蹤「桃園青創事」Facebook 粉專：最新活動即時公告
+2. 追蹤「桃園市政府青年事務局」Facebook 粉專
+   https://www.facebook.com/youth.tycg.gov.tw/?locale=zh_TW
+3. 直接聯繫青年事務局：
+   - 總機：(03) 422-5205
+   - 市政服務專線：1999（外縣市 03-218-9000）
+
+我會持續更新資料，歡迎之後再來詢問！
+```
+
 ### 聯絡資訊原則：
 - 只有涉及特定承辦單位時，才附上該單位聯絡方式
 - 不要每次都附上總機或地址
@@ -394,7 +442,6 @@ def ensure_mysql_schema() -> None:
 
             # Add member_id column if it doesn't exist (for existing tables)
             try:
-                from pymysql.err import OperationalError
                 conn.execute(
                     text(
                         """
@@ -405,11 +452,12 @@ def ensure_mysql_schema() -> None:
                         """
                     )
                 )
-            except OperationalError as e:
+            except Exception as e:
                 if "Duplicate column name" in str(e) or "Duplicate key name" in str(e):
                     logger.info("Column member_id or constraint already exists, skipping")
                 else:
                     logger.error(f"Failed to add member_id column: {e}")
+                    raise
                     raise
 
             # Add index on member_id for performance (if not exists)
@@ -423,12 +471,11 @@ def ensure_mysql_schema() -> None:
                     )
                 )
                 logger.info("Created index idx_chat_sessions_member")
-            except OperationalError as e:
+            except Exception as e:
                 if "Duplicate key name" in str(e):
                     logger.info("Index idx_chat_sessions_member already exists, skipping")
                 else:
                     logger.error(f"Failed to create index on chat_sessions.member_id: {e}")
-                    raise
 
             # Chat messages table
             conn.execute(

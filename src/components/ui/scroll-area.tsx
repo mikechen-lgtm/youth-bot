@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area@1.2.3";
+import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
 
 import { cn } from "./utils";
 
@@ -51,7 +51,6 @@ const ScrollBar = React.forwardRef<
         "relative flex-1 rounded-full transition-colors",
         "bg-border/60 hover:bg-border/80",
         "data-[state=active]:bg-border",
-        // Make scrollbar more visible for chat contexts
         "min-h-[20px]"
       )}
     />

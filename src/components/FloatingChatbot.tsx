@@ -183,11 +183,11 @@ export function FloatingChatbot() {
   const [currentStreamingMessage, setCurrentStreamingMessage] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
 
-  const handleFAQClick = (question: string) => {
-    handleSendMessage(question);
+  const handleFAQClick = (question: string, templateId?: string) => {
+    handleSendMessage(question, templateId);
   };
 
-  const handleSendMessage = async (content: string) => {
+  const handleSendMessage = async (content: string, templateId?: string) => {
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
@@ -218,6 +218,7 @@ export function FloatingChatbot() {
       
       await chatAPI.sendMessage(
         content,
+        templateId,
         // onChunk - 每次收到新的文字片段
         (chunk: string) => {
           accumulatedContent += chunk;

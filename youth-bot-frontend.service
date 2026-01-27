@@ -1,0 +1,18 @@
+[Unit]
+Description=Youth Bot Frontend Service (Vite)
+After=network.target youth-bot-backend.service
+
+[Service]
+Type=simple
+User=creative_design
+WorkingDirectory=/home/creative_design/youth-bot
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+Environment="NODE_ENV=development"
+ExecStart=/usr/local/bin/npm run dev
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/creative_design/youth-bot/logs/frontend.log
+StandardError=append:/home/creative_design/youth-bot/logs/frontend.log
+
+[Install]
+WantedBy=multi-user.target

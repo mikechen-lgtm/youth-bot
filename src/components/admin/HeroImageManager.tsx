@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { LogOut, RefreshCw, Plus, Upload, X, Check, Image, AlertTriangle } from "lucide-react";
+import { LogOut, RefreshCw, Plus, Upload, X, Check, Image, AlertTriangle, Download } from "lucide-react";
 import { adminApi, HeroImage } from "../../services/adminApi";
 
 interface HeroImageManagerProps {
@@ -324,6 +324,20 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
     onLogout();
   };
 
+  const handleExportChatHistory = async () => {
+    try {
+      // Create a temporary anchor element to trigger download
+      const link = document.createElement('a');
+      link.href = '/api/admin/chat-export';
+      link.download = 'chat_history.xlsx';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      setError("匯出失敗");
+    }
+  };
+
   const displayTabs = isNewSlot ? images.length + 1 : images.length;
 
   return (
@@ -346,6 +360,15 @@ export function HeroImageManager({ onLogout }: HeroImageManagerProps) {
               title="重新整理"
             >
               <RefreshCw size={20} className={isLoading ? "animate-spin" : ""} />
+            </button>
+            <button
+              onClick={handleExportChatHistory}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg transition-all"
+              style={{ color: '#ffffff', backgroundColor: '#3b82f6' }}
+              title="匯出對話紀錄"
+            >
+              <Download size={18} />
+              <span className="text-sm font-medium">匯出對話紀錄</span>
             </button>
             <button
               onClick={handleLogout}

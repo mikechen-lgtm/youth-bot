@@ -1,7 +1,7 @@
 import { Briefcase, Users, GraduationCap, FileText } from "lucide-react";
 
 interface ChatFAQSectionProps {
-  onQuestionClick: (question: string) => void;
+  onQuestionClick: (question: string, templateId?: string) => void;
 }
 
 export function ChatFAQSection({ onQuestionClick }: ChatFAQSectionProps) {
@@ -48,7 +48,7 @@ export function ChatFAQSection({ onQuestionClick }: ChatFAQSectionProps) {
             <button
               key={topic.id}
               className="group flex flex-col items-center p-3 rounded-lg border border-slate-200 bg-white hover:border-[#1E5B8C] hover:bg-[#1E5B8C]/5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-[#1E5B8C] focus:ring-offset-1"
-              onClick={() => onQuestionClick(topic.question)}
+              onClick={() => onQuestionClick(topic.question, topic.id)}
             >
               <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-[#1E5B8C]/10 flex items-center justify-center mb-2 transition-colors">
                 <IconComponent className="w-5 h-5 text-slate-500 group-hover:text-[#1E5B8C] transition-colors" />

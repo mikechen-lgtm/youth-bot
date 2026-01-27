@@ -1,0 +1,17 @@
+[Unit]
+Description=Youth Bot Backend Service (Flask)
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=creative_design
+WorkingDirectory=/home/creative_design/youth-bot
+Environment="PATH=/home/creative_design/miniconda3/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/creative_design/miniconda3/bin/python3 app.py
+Restart=always
+RestartSec=10
+StandardOutput=append:/home/creative_design/youth-bot/logs/backend.log
+StandardError=append:/home/creative_design/youth-bot/logs/backend.log
+
+[Install]
+WantedBy=multi-user.target

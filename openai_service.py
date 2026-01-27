@@ -4,6 +4,7 @@ Provides vector store management and RAG-based content generation.
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 import time
@@ -14,6 +15,15 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 logger = logging.getLogger(__name__)
+
+# 導入時間工具
+try:
+    from time_tools import TIME_TOOLS_DEFINITIONS, execute_time_tool
+    TIME_TOOLS_AVAILABLE = True
+    logger.info("時間工具模組載入成功")
+except ImportError as e:
+    TIME_TOOLS_AVAILABLE = False
+    logger.warning("時間工具模組載入失敗: %s", e)
 
 # Global state
 OPENAI_CLIENT: Optional[OpenAI] = None
@@ -36,8 +46,7 @@ def _resolve_vector_store_id() -> Optional[str]:
 
 def _resolve_model(default_model: str) -> str:
     """Get model name from environment or use default."""
-    env_model = os.getenv("OPENAI_MODEL", "").strip()
-    return env_model or default_model
+    return os.getenv("OPENAI_MODEL", "").strip() or default_model
 
 
 def _is_cloud_run() -> bool:
@@ -57,17 +66,7 @@ def _get_attr_or_key(obj: Any, key: str, default: Any = None) -> Any:
 
 
 def create_rag_store(display_name: str) -> str:
-    """Create a new vector store for File Search.
-
-    Args:
-        display_name: Name for the vector store
-
-    Returns:
-        Vector store ID
-
-    Raises:
-        RuntimeError: If client not initialized or creation fails
-    """
+    """Create a new vector store for File Search."""
     if not OPENAI_CLIENT:
         raise RuntimeError("OpenAI client not initialized")
 
@@ -86,18 +85,7 @@ def _wait_for_vector_store_file(
     timeout_s: int = 300,
     poll_interval: int = 2,
 ) -> None:
-    """Poll vector store files until the given file is processed.
-
-    Args:
-        vector_store_id: Vector store ID
-        file_id: File ID to wait for
-        timeout_s: Maximum wait time in seconds
-        poll_interval: Time between polls in seconds
-
-    Raises:
-        RuntimeError: If file processing fails
-        TimeoutError: If timeout exceeded
-    """
+    """Poll vector store files until the given file is processed."""
     if not OPENAI_CLIENT:
         raise RuntimeError("OpenAI client not initialized")
 
@@ -122,15 +110,7 @@ def _wait_for_vector_store_file(
 
 
 def upload_file_to_rag_store(vector_store_id: str, file_path: str) -> None:
-    """Upload a file to the vector store with polling for completion.
-
-    Args:
-        vector_store_id: Target vector store ID
-        file_path: Path to the file to upload
-
-    Raises:
-        RuntimeError: If client not initialized or upload fails
-    """
+    """Upload a file to the vector store with polling for completion."""
     if not OPENAI_CLIENT:
         raise RuntimeError("OpenAI client not initialized")
 
@@ -148,14 +128,7 @@ def upload_file_to_rag_store(vector_store_id: str, file_path: str) -> None:
 
 
 def initialize_rag_store(display_name: str = "TaoyuanYouthBureauKB") -> Optional[str]:
-    """Initialize vector store and upload default documents.
-
-    Args:
-        display_name: Name for the vector store
-
-    Returns:
-        Vector store ID or None if initialization fails
-    """
+    """Initialize vector store and upload default documents."""
     global _vector_store_id
 
     persisted_id = _resolve_vector_store_id()
@@ -203,14 +176,8 @@ def _upload_rag_files(vector_store_id: str) -> None:
         try:
             upload_file_to_rag_store(vector_store_id, str(rag_file))
             logger.info("Successfully uploaded %s", rag_file.name)
-        except APITimeoutError:
-            logger.error("Timeout uploading %s, skipping", rag_file.name)
-            upload_failures += 1
-        except APIError as e:
-            logger.error("OpenAI API error uploading %s: %s", rag_file.name, e)
-            upload_failures += 1
-        except FileNotFoundError:
-            logger.error("File not found: %s", rag_file)
+        except (APITimeoutError, APIError, FileNotFoundError) as e:
+            logger.error("Error uploading %s: %s", rag_file.name, e)
             upload_failures += 1
         except Exception as exc:
             logger.error("Unexpected error uploading %s: %s", rag_file.name, exc, exc_info=True)
@@ -228,14 +195,7 @@ def get_rag_store_name() -> Optional[str]:
 
 
 def delete_rag_store(vector_store_id: Optional[str] = None) -> None:
-    """Delete the vector store.
-
-    Args:
-        vector_store_id: ID of the store to delete, or None to use current
-
-    Raises:
-        RuntimeError: If OpenAI client not initialized
-    """
+    """Delete the vector store."""
     if not OPENAI_CLIENT:
         raise RuntimeError("OpenAI client not initialized")
 
@@ -273,10 +233,7 @@ def _extract_text_from_content(content: Any) -> Optional[str]:
     if isinstance(content, str):
         return content
     if isinstance(content, list):
-        parts = [
-            _get_attr_or_key(part, "text")
-            for part in content
-        ]
+        parts = [_get_attr_or_key(part, "text") for part in content]
         filtered = [p for p in parts if p]
         return "\n".join(filtered) if filtered else None
     return None
@@ -324,36 +281,79 @@ def _extract_output_text(response: Any) -> str:
     return "".join(parts)
 
 
-def generate_with_rag_stream(
-    query: str,
-    system_prompt: str,
-    chat_history: List[Dict[str, str]],
-    model: str = "gpt-4o-mini",
-) -> Generator[Dict[str, Any], None, None]:
-    """Stream content generation using OpenAI File Search.
-
-    Args:
-        query: User query
-        system_prompt: System prompt for the model
-        chat_history: Previous conversation messages
-        model: Model name to use
+def _process_function_calls(
+    messages: List[Dict[str, Any]],
+    resolved_model: str,
+) -> Generator[Dict[str, Any], None, List[Dict[str, Any]]]:
+    """
+    執行 function calling 階段，處理時間工具調用
 
     Yields:
-        Dict with 'type' ('text', 'sources', 'end') and 'content'
+        function_call 事件（用於前端通知）
 
-    Raises:
-        RuntimeError: If client or vector store not initialized
+    Returns:
+        更新後的 messages 列表
     """
-    if not OPENAI_CLIENT:
-        raise RuntimeError("OpenAI client not initialized")
+    response = OPENAI_CLIENT.chat.completions.create(
+        model=resolved_model,
+        messages=messages,
+        tools=TIME_TOOLS_DEFINITIONS,
+        tool_choice="auto",
+        max_tokens=50,
+        temperature=0.3,
+    )
 
-    vector_store_id = get_rag_store_name()
-    if not vector_store_id:
-        raise RuntimeError("Vector store not initialized")
+    assistant_message = response.choices[0].message
+    if not assistant_message.tool_calls:
+        return messages
 
-    messages = _build_input(system_prompt, chat_history, query)
-    resolved_model = _resolve_model(model)
+    logger.info("檢測到 %d 個工具調用", len(assistant_message.tool_calls))
 
+    # 添加助手消息（包含 tool calls）
+    messages.append({
+        "role": "assistant",
+        "content": assistant_message.content or "",
+        "tool_calls": [
+            {
+                "id": tc.id,
+                "type": "function",
+                "function": {"name": tc.function.name, "arguments": tc.function.arguments},
+            }
+            for tc in assistant_message.tool_calls
+        ],
+    })
+
+    # 執行每個 tool call
+    for tool_call in assistant_message.tool_calls:
+        function_name = tool_call.function.name
+        try:
+            arguments = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError:
+            arguments = {}
+
+        logger.info("執行工具: %s，參數: %s", function_name, arguments)
+        result = execute_time_tool(function_name, arguments)
+
+        yield {
+            "type": "function_call",
+            "content": {"function": function_name, "arguments": arguments, "result": result},
+        }
+
+        messages.append({
+            "role": "tool",
+            "tool_call_id": tool_call.id,
+            "content": json.dumps(result, ensure_ascii=False),
+        })
+
+    return messages
+
+
+def _stream_rag_response(
+    messages: List[Dict[str, Any]],
+    resolved_model: str,
+    vector_store_id: str,
+) -> Generator[Dict[str, Any], None, None]:
+    """執行 RAG streaming 生成"""
     with OPENAI_CLIENT.responses.stream(
         model=resolved_model,
         input=messages,
@@ -376,26 +376,62 @@ def generate_with_rag_stream(
     yield {"type": "end", "content": ""}
 
 
+def generate_with_rag_stream(
+    query: str,
+    system_prompt: str,
+    chat_history: List[Dict[str, str]],
+    model: str = "gpt-4o-mini",
+) -> Generator[Dict[str, Any], None, None]:
+    """Stream content generation using OpenAI File Search with optional function calling.
+
+    使用兩階段策略：
+    1. 階段1：使用 Chat Completions API 檢查並執行 function calling
+    2. 階段2：使用 Responses API 進行 streaming 生成
+
+    Yields:
+        Dict with 'type' ('text', 'function_call', 'sources', 'end') and 'content'
+    """
+    if not OPENAI_CLIENT:
+        raise RuntimeError("OpenAI client not initialized")
+
+    vector_store_id = get_rag_store_name()
+    if not vector_store_id:
+        raise RuntimeError("Vector store not initialized")
+
+    messages = _build_input(system_prompt, chat_history, query)
+    resolved_model = _resolve_model(model)
+
+    # 階段1：Function Calling（如果啟用且時間工具可用）
+    enable_function_calling = os.getenv("ENABLE_FUNCTION_CALLING", "true").lower() == "true"
+
+    if enable_function_calling and TIME_TOOLS_AVAILABLE:
+        try:
+            logger.info("階段1：檢查 function calling 需求")
+            fc_generator = _process_function_calls(messages, resolved_model)
+
+            # 消費 generator 並 yield function_call 事件
+            try:
+                while True:
+                    event = next(fc_generator)
+                    yield event
+            except StopIteration as e:
+                messages = e.value if e.value else messages
+
+        except Exception as e:
+            logger.warning("Function calling 失敗，回退到標準模式: %s", e)
+
+    # 階段2：RAG Streaming
+    logger.info("階段2：開始 streaming 生成")
+    yield from _stream_rag_response(messages, resolved_model, vector_store_id)
+
+
 def generate_with_rag(
     query: str,
     system_prompt: str,
     chat_history: List[Dict[str, str]],
     model: str = "gpt-4o-mini",
 ) -> Dict[str, Any]:
-    """Non-streaming content generation using OpenAI File Search.
-
-    Args:
-        query: User query
-        system_prompt: System prompt for the model
-        chat_history: Previous conversation messages
-        model: Model name to use
-
-    Returns:
-        Dict with 'text' and 'sources' keys
-
-    Raises:
-        RuntimeError: If client or vector store not initialized
-    """
+    """Non-streaming content generation using OpenAI File Search."""
     if not OPENAI_CLIENT:
         raise RuntimeError("OpenAI client not initialized")
 
