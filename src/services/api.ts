@@ -1,6 +1,7 @@
 export interface ChatMessage {
   message: string;
   session_id?: string;
+  template_id?: string;
 }
 
 export interface SourceItem {
@@ -13,17 +14,22 @@ export interface StreamResponse {
   session_id: string;
 }
 
-const DEFAULT_BASE_URL = (() => {
+const CSRF_TOKEN_ENDPOINT = "/api/csrf-token";
+
+function getDefaultBaseURL(): string {
   const fromEnv = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.trim();
   if (!fromEnv) {
     return "";
   }
   return fromEnv.replace(/\/+$/, "");
-})();
+}
+
+const DEFAULT_BASE_URL = getDefaultBaseURL();
 
 export class ChatAPI {
   private baseURL: string;
   private sessionId: string | null = null;
+  private csrfToken: string | null = null;
 
   constructor(baseURL: string = DEFAULT_BASE_URL) {
     this.baseURL = baseURL;
@@ -37,8 +43,39 @@ export class ChatAPI {
     return `${this.baseURL}${normalizedPath}`;
   }
 
+  /**
+   * Fetch CSRF token from the server if not already cached.
+   */
+  private async ensureCSRFToken(): Promise<string> {
+    if (this.csrfToken) {
+      return this.csrfToken;
+    }
+
+    const response = await fetch(this.resolveURL(CSRF_TOKEN_ENDPOINT), {
+      method: "GET",
+      credentials: "include",
+    });
+
+    if (!response.ok) {
+      const errorMessage = `CSRF token request failed with status ${response.status}`;
+      console.error("[ChatAPI]", errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
+    if (!data.success || !data.csrf_token) {
+      const errorMessage = "Server returned invalid CSRF token response";
+      console.error("[ChatAPI]", errorMessage);
+      throw new Error(errorMessage);
+    }
+
+    this.csrfToken = data.csrf_token;
+    return this.csrfToken;
+  }
+
   async sendMessage(
     message: string,
+    templateId?: string,
     onChunk?: (chunk: string) => void,
     onComplete?: (fullMessage: string) => void,
     onError?: (error: string) => void,
@@ -47,13 +84,18 @@ export class ChatAPI {
     const payload: ChatMessage = {
       message,
       session_id: this.sessionId || undefined,
+      template_id: templateId || undefined,
     };
 
     try {
+      // Ensure we have a CSRF token before sending the request
+      const csrfToken = await this.ensureCSRFToken();
+
       const response = await fetch(this.resolveURL("/api/chat"), {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "X-CSRF-Token": csrfToken,
         },
         credentials: "include",
         body: JSON.stringify(payload),
@@ -127,6 +169,7 @@ export class ChatAPI {
 
   clearSession(): void {
     this.sessionId = null;
+    this.csrfToken = null;
   }
 }
 

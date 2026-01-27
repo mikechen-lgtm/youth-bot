@@ -1,4 +1,4 @@
-"""Flask application that manages surveys backed by MySQL."""
+"""Flask application for Youth-Bot chatbot and admin management."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ import os
 import re
 import secrets
 import uuid
+from datetime import timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional
 
@@ -25,6 +26,7 @@ from flask import (
     session,
     stream_with_context,
     send_from_directory,
+    send_file,
 )
 from flask_cors import CORS
 from sqlalchemy import create_engine, event, text
@@ -42,6 +44,14 @@ from openai_service import (
     get_rag_store_name,
     generate_with_rag_stream,
 )
+from csrf_protection import CSRFProtection, csrf_protect, csrf_exempt
+from logging_config import configure_logging
+from audit_log import log_admin_action
+from security_headers import configure_security_headers
+from startup_checks import create_health_checks
+from validators import validate_message_input
+from file_validation import validate_image_upload, FileValidationError
+from rate_limiting import create_limiter
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_DIR = os.path.join(BASE_DIR, "dist")
@@ -63,16 +73,39 @@ STORAGE_BASE = _default_storage_base()
 
 
 # MySQL connection for all tables
-MYSQL_URL = os.getenv("MYSQL_URL", "mysql+pymysql://root:123456@localhost/youth-chat")
-mysql_engine: Engine = create_engine(MYSQL_URL, future=True, pool_pre_ping=True)
+def _build_mysql_url() -> str:
+    """Build MySQL connection URL from environment variables."""
+    # If MYSQL_URL is set, use it directly
+    if os.getenv("MYSQL_URL"):
+        return os.getenv("MYSQL_URL")
+    # Otherwise, build from individual components
+    host = os.getenv("MYSQL_HOST", "localhost")
+    port = os.getenv("MYSQL_PORT", "3306")
+    user = os.getenv("MYSQL_USER", "root")
+    password = os.getenv("MYSQL_PASSWORD", "")
+    database = os.getenv("MYSQL_DATABASE", "youth-chat")
+    return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
+
+MYSQL_URL = _build_mysql_url()
+mysql_engine: Engine = create_engine(
+    MYSQL_URL,
+    future=True,
+    pool_pre_ping=True,          # 確保連線有效性
+    pool_size=10,                # 連線池大小（同時保持的連線數）
+    max_overflow=20,             # 超過 pool_size 時可額外建立的連線數
+    pool_recycle=3600,           # 連線回收時間（秒），避免 MySQL 的 wait_timeout 問題
+    pool_timeout=30,             # 取得連線的等待時間（秒）
+    echo_pool=False,             # 生產環境關閉連線池日誌
+    connect_args={
+        "connect_timeout": 10,   # MySQL 連線超時（秒）
+        "charset": "utf8mb4",    # 使用 UTF-8 編碼
+    }
+)
 
 
 ASSET_ROUTE_PREFIX = os.getenv("ASSET_ROUTE_PREFIX", "/uploads")
 ASSET_LOCAL_DIR = os.getenv("ASSET_LOCAL_DIR") or os.path.join(STORAGE_BASE, "uploads")
 os.makedirs(ASSET_LOCAL_DIR, exist_ok=True)
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 app = Flask(__name__, static_url_path=ASSET_ROUTE_PREFIX, static_folder=ASSET_LOCAL_DIR)
 
@@ -81,15 +114,32 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
 app.config.update(
     SESSION_COOKIE_SECURE=bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV")),
     SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SAMESITE='Strict',  # Changed from 'Lax' to 'Strict' for better CSRF protection
     PERMANENT_SESSION_LIFETIME=86400,  # 24 hours
 )
+
+# Configure structured logging
+configure_logging(app)
+logger = logging.getLogger(__name__)
 
 CORS(
     app,
     resources={r"/api/*": {"origins": os.getenv("FRONTEND_ORIGIN", "*")}},
     supports_credentials=True,
 )
+
+# Initialize CSRF Protection
+app.csrf_protection = CSRFProtection(app.secret_key)
+
+# Initialize rate limiter
+limiter = create_limiter(app)
+
+# Configure security headers
+def is_production_environment() -> bool:
+    """Check if running in a production environment."""
+    return os.getenv('FLASK_ENV') == 'production' or bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
+
+configure_security_headers(app, is_production=is_production_environment())
 
 # OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -148,6 +198,33 @@ def _build_system_prompt() -> str:
 '''
 
     return f'''你是「桃園市政府青年事務局」智慧客服助理。
+
+### 語言規範（重要！）：
+- 使用台灣繁體中文，採用台灣慣用詞彙
+- 禁止使用中國大陸用語
+
+常見用語對照（左邊正確，右邊禁止）：
+- 資訊 ✓ → 信息 ✗
+- 軟體 ✓ → 軟件 ✗
+- 網路 ✓ → 網絡 ✗
+- 程式 ✓ → 程序 ✗
+- 視訊 ✓ → 視頻 ✗
+- 影片 ✓ → 視頻 ✗
+- 按讚 ✓ → 點贊 ✗
+- 貼文 ✓ → 帖子 ✗
+- 部落格 ✓ → 博客 ✗
+- 簡訊 ✓ → 短信 ✗
+- 數位 ✓ → 數字化 ✗
+- 支援 ✓ → 支持 ✗（表示技術協助時）
+- 透過 ✓ → 通過 ✗（表示藉由時）
+- 行動裝置 ✓ → 移動設備 ✗
+- 搜尋 ✓ → 搜索 ✗
+- 瀏覽 ✓ → 訪問 ✗（表示查看網頁時）
+- 連結 ✓ → 鏈接 ✗
+- 檔案 ✓ → 文件 ✗（表示電腦檔案時）
+- 列印 ✓ → 打印 ✗
+- 註冊 ✓ → 注冊 ✗
+- 登入 ✓ → 登錄 ✗
 
 ### 你的角色定位：
 - 語氣：專業、簡潔、自然；像真人客服對話；不使用 emoji 或表情符號
@@ -300,78 +377,59 @@ def ensure_mysql_schema() -> None:
                     """
                 )
             )
-            # Surveys table
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS surveys (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        name VARCHAR(255) NOT NULL,
-                        description TEXT,
-                        category VARCHAR(100),
-                        is_active TINYINT(1) DEFAULT 1,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                    """
-                )
-            )
-            # Survey questions table
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS survey_questions (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        survey_id INT NOT NULL,
-                        question_type VARCHAR(50) NOT NULL,
-                        question_text TEXT NOT NULL,
-                        description TEXT,
-                        font_size INT,
-                        options_json TEXT,
-                        is_required TINYINT(1) DEFAULT 0,
-                        display_order INT DEFAULT 0,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                    """
-                )
-            )
-            # Survey responses table
-            conn.execute(
-                text(
-                    """
-                    CREATE TABLE IF NOT EXISTS survey_responses (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        survey_id INT NOT NULL,
-                        member_id INT,
-                        external_id VARCHAR(255),
-                        answers_json TEXT NOT NULL,
-                        is_completed TINYINT(1) DEFAULT 1,
-                        completed_at DATETIME,
-                        source VARCHAR(50),
-                        ip_address VARCHAR(45),
-                        user_agent TEXT,
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                        FOREIGN KEY (survey_id) REFERENCES surveys(id) ON DELETE CASCADE,
-                        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
-                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
-                    """
-                )
-            )
             # Chat sessions table
             conn.execute(
                 text(
                     """
                     CREATE TABLE IF NOT EXISTS chat_sessions (
                         id VARCHAR(255) PRIMARY KEY,
+                        member_id INT,
                         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
                     """
                 )
             )
+
+            # Add member_id column if it doesn't exist (for existing tables)
+            try:
+                from pymysql.err import OperationalError
+                conn.execute(
+                    text(
+                        """
+                        ALTER TABLE chat_sessions
+                        ADD COLUMN member_id INT,
+                        ADD CONSTRAINT fk_chat_sessions_member
+                        FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE SET NULL
+                        """
+                    )
+                )
+            except OperationalError as e:
+                if "Duplicate column name" in str(e) or "Duplicate key name" in str(e):
+                    logger.info("Column member_id or constraint already exists, skipping")
+                else:
+                    logger.error(f"Failed to add member_id column: {e}")
+                    raise
+
+            # Add index on member_id for performance (if not exists)
+            try:
+                conn.execute(
+                    text(
+                        """
+                        CREATE INDEX idx_chat_sessions_member
+                        ON chat_sessions(member_id)
+                        """
+                    )
+                )
+                logger.info("Created index idx_chat_sessions_member")
+            except OperationalError as e:
+                if "Duplicate key name" in str(e):
+                    logger.info("Index idx_chat_sessions_member already exists, skipping")
+                else:
+                    logger.error(f"Failed to create index on chat_sessions.member_id: {e}")
+                    raise
+
             # Chat messages table
             conn.execute(
                 text(
@@ -411,9 +469,34 @@ def ensure_mysql_schema() -> None:
         logger.info("MySQL schema ensured (all tables)")
     except Exception as e:
         logger.error(f"Failed to create MySQL schema: {e}")
+        raise  # Re-raise to let retry mechanism handle it
 
 
-ensure_mysql_schema()
+def ensure_mysql_schema_with_retry(max_retries: int = 3, retry_delay: int = 5) -> None:
+    """Ensure MySQL schema with retry mechanism for startup resilience."""
+    import time
+    for attempt in range(1, max_retries + 1):
+        try:
+            logger.info(f"Attempting to initialize MySQL schema (attempt {attempt}/{max_retries})...")
+            ensure_mysql_schema()
+            logger.info("MySQL schema initialization successful")
+            return
+        except Exception as e:
+            if attempt < max_retries:
+                logger.warning(
+                    f"MySQL schema initialization failed (attempt {attempt}/{max_retries}): {e}. "
+                    f"Retrying in {retry_delay} seconds..."
+                )
+                time.sleep(retry_delay)
+            else:
+                logger.error(
+                    f"MySQL schema initialization failed after {max_retries} attempts: {e}. "
+                    "Please check MySQL connection settings and ensure the database is running."
+                )
+                raise
+
+
+ensure_mysql_schema_with_retry()
 
 
 # Initialize OpenAI client and RAG store at startup
@@ -424,15 +507,39 @@ def initialize_openai_rag():
             store_id = initialize_rag_store("TaoyuanYouthBureauKB")
             if store_id:
                 logger.info("OpenAI File Search initialized successfully")
+                return store_id
             else:
-                logger.warning("OpenAI File Search not initialized (missing vector store)")
+                logger.error("OpenAI File Search initialization failed: vector store ID is None")
+                return None
         else:
-            logger.warning("OPENAI_API_KEY not set, OpenAI File Search not available")
+            logger.error("OPENAI_API_KEY not set - RAG unavailable")
+            return None
     except Exception as e:
-        logger.error(f"Failed to initialize OpenAI File Search: {e}")
+        logger.error(f"Failed to initialize OpenAI File Search: {e}", exc_info=True)
+        return None
 
 
-initialize_openai_rag()
+_vector_store_id = initialize_openai_rag()
+
+# Run startup health checks
+health_checks = create_health_checks(mysql_engine, OPENAI_CLIENT, _vector_store_id)
+
+# In production, fail fast on startup issues
+fail_fast = os.getenv('FLASK_ENV') == 'production' or os.getenv('FAIL_FAST_STARTUP', 'false').lower() == 'true'
+
+try:
+    results = health_checks.run_all(fail_fast=fail_fast)
+
+    # Log summary
+    failed_checks = [name for name, status in results.items() if 'FAIL' in status]
+    if failed_checks:
+        logger.warning(f"Startup checks failed: {', '.join(failed_checks)}")
+    else:
+        logger.info("All startup checks passed")
+
+except RuntimeError as e:
+    logger.critical(f"Application startup failed: {e}")
+    raise  # Prevent app from starting
 
 
 # ========== Admin Authentication ==========
@@ -485,6 +592,8 @@ def validate_url(url: Optional[str]) -> tuple[bool, Optional[str]]:
 
 
 @app.post("/api/admin/login")
+@csrf_protect
+@limiter.limit("5 per minute")
 def admin_login():
     """Admin login endpoint."""
     if not ADMIN_PASSWORD:
@@ -497,24 +606,134 @@ def admin_login():
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
         session["is_admin"] = True
         session.permanent = True
-        return jsonify({"success": True, "message": "登入成功"})
+        # Generate new CSRF token after successful login
+        csrf_token = app.csrf_protection.generate_token()
 
+        log_admin_action('login', 'admin', username)
+
+        return jsonify({
+            "success": True,
+            "message": "登入成功",
+            "csrf_token": csrf_token
+        })
+
+    log_admin_action('login_failed', 'admin', username, {'reason': '帳號或密碼錯誤'})
     return jsonify({"success": False, "error": "帳號或密碼錯誤"}), 401
 
 
 @app.post("/api/admin/logout")
+@csrf_protect
 def admin_logout():
     """Admin logout endpoint."""
     session.pop("is_admin", None)
+    session.pop("csrf_token", None)  # Clear CSRF token on logout
     return jsonify({"success": True, "message": "已登出"})
+
+
+@app.get("/api/csrf-token")
+def get_csrf_token():
+    """Get CSRF token for the current session."""
+    token = app.csrf_protection.get_token()
+    return jsonify({"success": True, "csrf_token": token})
 
 
 @app.get("/api/admin/check")
 def admin_check():
     """Check admin authentication status."""
     if session.get("is_admin"):
-        return jsonify({"success": True, "authenticated": True})
+        csrf_token = app.csrf_protection.get_token()
+        return jsonify({
+            "success": True,
+            "authenticated": True,
+            "csrf_token": csrf_token
+        })
     return jsonify({"success": False, "authenticated": False}), 401
+
+
+@app.get("/api/admin/chat-export")
+def admin_chat_export():
+    """Export chat history to Excel file."""
+    if not session.get("is_admin"):
+        return jsonify({"success": False, "error": "未授權"}), 401
+
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+        from io import BytesIO
+        from datetime import datetime
+
+        # Query chat data with JOIN
+        with mysql_engine.begin() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT
+                        m.display_name,
+                        m.email,
+                        cm.created_at,
+                        cm.role,
+                        cm.content,
+                        cm.template_id
+                    FROM chat_messages cm
+                    JOIN chat_sessions cs ON cm.session_id = cs.id
+                    LEFT JOIN members m ON cs.member_id = m.id
+                    ORDER BY cm.created_at DESC
+                    """
+                )
+            ).fetchall()
+
+        # Create Excel workbook
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "對話紀錄"
+
+        # Header row
+        headers = ["Name", "Email", "Time", "Role", "Message", "Question Type"]
+        ws.append(headers)
+
+        # Style header
+        header_fill = PatternFill(start_color="4472C4", end_color="4472C4", fill_type="solid")
+        header_font = Font(bold=True, color="FFFFFF")
+        for cell in ws[1]:
+            cell.fill = header_fill
+            cell.font = header_font
+
+        # Data rows
+        for row in rows:
+            display_name = row[0] or "匿名"
+            email = row[1] or ""
+            created_at = row[2].strftime("%Y-%m-%d %H:%M:%S") if row[2] else ""
+            role = row[3]  # Keep original English value: "user" or "assistant"
+            content = row[4] or ""
+            template_id = row[5] or "manual"  # NULL displays as "manual"
+            ws.append([display_name, email, created_at, role, content, template_id])
+
+        # Adjust column widths
+        ws.column_dimensions['A'].width = 15
+        ws.column_dimensions['B'].width = 30
+        ws.column_dimensions['C'].width = 20
+        ws.column_dimensions['D'].width = 10
+        ws.column_dimensions['E'].width = 60
+        ws.column_dimensions['F'].width = 15  # Question Type column
+
+        # Save to BytesIO
+        output = BytesIO()
+        wb.save(output)
+        output.seek(0)
+
+        # Generate filename with timestamp
+        filename = f"chat_history_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"
+
+        return send_file(
+            output,
+            mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        logger.exception("Failed to export chat history")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 
 # ========== Hero Images API ==========
@@ -610,24 +829,21 @@ def admin_get_hero_images():
 
 @app.post("/api/admin/hero-images")
 @admin_required
+@csrf_protect
+@limiter.limit("10 per hour")
 def admin_upload_hero_image():
     """Upload a new hero image (stores in database)."""
     if "file" not in request.files:
         return jsonify({"success": False, "error": "未提供檔案"}), 400
 
     file = request.files["file"]
-    if not file.filename:
-        return jsonify({"success": False, "error": "檔案名稱為空"}), 400
 
-    # Validate file type
-    allowed_types = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed_types:
-        return jsonify({"success": False, "error": "只支援 JPG、PNG、WebP 格式"}), 400
-
-    # Check file size (max 5MB)
-    file_data = file.read()
-    if len(file_data) > 5 * 1024 * 1024:
-        return jsonify({"success": False, "error": "檔案大小不能超過 5MB"}), 400
+    # Use comprehensive file validator
+    try:
+        file_data = validate_image_upload(file)
+    except FileValidationError as e:
+        logger.warning(f"File validation failed: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
 
     # Get alt_text from form
     alt_text = request.form.get("alt_text", "")
@@ -679,6 +895,11 @@ def admin_upload_hero_image():
         ).mappings().first()
 
     if inserted:
+        log_admin_action('upload', 'hero_image', inserted['id'], {
+            'filename': file.filename,
+            'size': len(file_data)
+        })
+
         return jsonify({
             "success": True,
             "image": {
@@ -694,12 +915,13 @@ def admin_upload_hero_image():
 
 @app.delete("/api/admin/hero-images/<int:image_id>")
 @admin_required
+@csrf_protect
 def admin_delete_hero_image(image_id: int):
     """Delete a hero image from database."""
     with mysql_engine.begin() as conn:
-        # Check if image exists
+        # Get image info for logging
         image = conn.execute(
-            text("SELECT id FROM hero_carousel WHERE id = :id"),
+            text("SELECT id, filename FROM hero_carousel WHERE id = :id"),
             {"id": image_id}
         ).mappings().first()
 
@@ -712,11 +934,14 @@ def admin_delete_hero_image(image_id: int):
             {"id": image_id}
         )
 
+        log_admin_action('delete', 'hero_image', image_id, {'filename': image['filename']})
+
     return jsonify({"success": True, "message": "已刪除"})
 
 
 @app.put("/api/admin/hero-images/reorder")
 @admin_required
+@csrf_protect
 def admin_reorder_hero_images():
     """Reorder hero images."""
     data = request.get_json() or {}
@@ -743,12 +968,24 @@ def admin_reorder_hero_images():
 
 @app.put("/api/admin/hero-images/<int:image_id>")
 @admin_required
+@csrf_protect
 def admin_update_hero_image(image_id: int):
     """Update hero image metadata."""
     data = request.get_json() or {}
 
+    # Whitelist of allowed fields to prevent SQL injection
+    ALLOWED_FIELDS = {"alt_text", "is_active", "link_url"}
+
     updates = []
     params = {"id": image_id, "now": utcnow()}
+
+    # Validate only allowed fields are being updated
+    invalid_fields = set(data.keys()) - ALLOWED_FIELDS
+    if invalid_fields:
+        return jsonify({
+            "success": False,
+            "error": f"不允許更新的欄位: {', '.join(invalid_fields)}"
+        }), 400
 
     if "alt_text" in data:
         updates.append("alt_text = :alt_text")
@@ -771,8 +1008,11 @@ def admin_update_hero_image(image_id: int):
     if not updates:
         return jsonify({"success": False, "error": "沒有要更新的欄位"}), 400
 
+    # Always update timestamp
     updates.append("updated_at = :now")
 
+    # Use explicit field mapping instead of dynamic SQL construction
+    # This is safe because updates only contains hardcoded field assignments
     with mysql_engine.begin() as conn:
         result = conn.execute(
             text(f"UPDATE hero_carousel SET {', '.join(updates)} WHERE id = :id"),
@@ -782,10 +1022,12 @@ def admin_update_hero_image(image_id: int):
         if result.rowcount == 0:
             return jsonify({"success": False, "error": "圖片不存在"}), 404
 
+        log_admin_action('update', 'hero_image', image_id, {'updates': list(data.keys())})
+
     return jsonify({"success": True, "message": "已更新"})
 
 
-def ensure_chat_session(session_id: Optional[str] = None) -> str:
+def ensure_chat_session(session_id: Optional[str] = None, member_id: Optional[int] = None) -> str:
     """Return an existing chat session id or create a new one."""
     chat_session_id = session_id or uuid.uuid4().hex
     now = utcnow()
@@ -793,30 +1035,31 @@ def ensure_chat_session(session_id: Optional[str] = None) -> str:
         conn.execute(
             text(
                 """
-                INSERT INTO chat_sessions (id, created_at, updated_at)
-                VALUES (:id, :now, :now)
+                INSERT INTO chat_sessions (id, member_id, created_at, updated_at)
+                VALUES (:id, :member_id, :now, :now)
                 ON DUPLICATE KEY UPDATE updated_at = :now
                 """
             ),
-            {"id": chat_session_id, "now": now},
+            {"id": chat_session_id, "member_id": member_id, "now": now},
         )
     return chat_session_id
 
 
-def save_chat_message(session_id: str, role: str, content: str) -> None:
+def save_chat_message(session_id: str, role: str, content: str, template_id: Optional[str] = None) -> None:
     """Persist a chat message for a given session."""
     with mysql_engine.begin() as conn:
         conn.execute(
             text(
                 """
-                INSERT INTO chat_messages (session_id, role, content, created_at)
-                VALUES (:sid, :role, :content, :created_at)
+                INSERT INTO chat_messages (session_id, role, content, template_id, created_at)
+                VALUES (:sid, :role, :content, :template_id, :created_at)
                 """
             ),
             {
                 "sid": session_id,
                 "role": role,
                 "content": content,
+                "template_id": template_id,
                 "created_at": utcnow(),
             },
         )
@@ -834,16 +1077,22 @@ def save_chat_message(session_id: str, role: str, content: str) -> None:
 
 def fetch_chat_history(session_id: str, limit: int = 12) -> List[Dict[str, Any]]:
     """Fetch the most recent chat history for the session in chronological order."""
+    # Strict validation to prevent SQL injection
+    if not isinstance(limit, int):
+        raise ValueError("limit must be an integer")
     if limit <= 0:
         limit = 1
+    if limit > 100:  # Maximum safety limit
+        limit = 100
 
+    # Safe to use in query after validation
     query = text(
         f"""
         SELECT role, content
         FROM chat_messages
         WHERE session_id = :sid
         ORDER BY created_at DESC
-        LIMIT {limit}
+        LIMIT {int(limit)}
         """
     )
 
@@ -881,6 +1130,9 @@ def strip_citations(text: str) -> str:
 
 @app.post("/api/chat")
 @app.post("/chat")
+@csrf_protect
+@validate_message_input
+@limiter.limit("30 per minute")
 def api_chat():
     if not request.is_json:
         return jsonify({"error": "Payload must be JSON."}), 400
@@ -888,17 +1140,22 @@ def api_chat():
     payload = request.get_json(force=True) or {}
     message = (payload.get("message") or "").strip()
     requested_session = payload.get("session_id")
+    template_id = payload.get("template_id")  # Extract template_id from payload
 
     if not message:
         return jsonify({"error": "message is required"}), 400
 
+    # Get logged-in user's member_id from session
+    member_id = session.get("user", {}).get("member_id")
+
     session_id = ensure_chat_session(
-        requested_session if isinstance(requested_session, str) else None
+        requested_session if isinstance(requested_session, str) else None,
+        member_id=member_id
     )
     history = fetch_chat_history(session_id)
 
     # Persist the user's message before streaming.
-    save_chat_message(session_id, "user", message)
+    save_chat_message(session_id, "user", message, template_id)
 
     client = OPENAI_CLIENT
     rag_store = get_rag_store_name()
@@ -951,14 +1208,33 @@ def api_chat():
                 elif chunk["type"] == "end":
                     pass
 
-        except Exception:
-            logger.exception("Chat streaming failed for session %s", session_id)
-            error_message = (
-                "產生回覆時發生問題，請稍後再試或聯繫我們的服務人員。"
-            )
+        except Exception as e:
+            from openai import RateLimitError, APITimeoutError, OpenAIError
+            from sqlalchemy.exc import SQLAlchemyError
+
+            error_message = "產生回覆時發生問題，請稍後再試或聯繫我們的服務人員。"
+
+            if isinstance(e, RateLimitError):
+                logger.warning(f"OpenAI rate limit hit for session {session_id}")
+                error_message = "服務暫時過載，請稍後重試"
+            elif isinstance(e, APITimeoutError):
+                logger.warning(f"OpenAI timeout for session {session_id}")
+                error_message = "AI 服務響應超時，請重試"
+            elif isinstance(e, OpenAIError):
+                logger.error(f"OpenAI API error: {e}", exc_info=True)
+                error_message = "AI 服務暫時不可用"
+            elif isinstance(e, SQLAlchemyError):
+                logger.error(f"Database error in chat: {e}", exc_info=True)
+                error_message = "數據庫錯誤，請重試"
+            elif isinstance(e, ValueError):
+                logger.warning(f"Invalid input: {e}")
+                error_message = str(e)
+            else:
+                logger.critical(f"Unexpected error in chat: {e}", exc_info=True)
+
             save_chat_message(session_id, "assistant", error_message)
             yield format_sse(
-                {"type": "text", "content": error_message, "session_id": session_id}
+                {"type": "error", "content": error_message, "session_id": session_id}
             )
             yield format_sse({"type": "end", "content": "", "session_id": session_id})
             return
@@ -1112,486 +1388,9 @@ def upsert_member(
     return int(member_id) if member_id is not None else None
 
 
-QUESTION_TYPE_ALIASES: Dict[str, List[str]] = {
-    "TEXT": ["TEXT", "INPUT", "SHORT_TEXT"],
-    "TEXTAREA": ["TEXTAREA", "LONG_TEXT", "PARAGRAPH"],
-    "SINGLE_CHOICE": ["SINGLE_CHOICE", "SINGLE", "RADIO", "CHOICE_SINGLE"],
-    "MULTI_CHOICE": ["MULTI_CHOICE", "MULTI", "CHECKBOX", "CHOICE_MULTI", "MULTIPLE"],
-    "SELECT": ["SELECT", "DROPDOWN", "PULLDOWN"],
-    "NAME": ["NAME"],
-    "PHONE": ["PHONE", "TEL", "MOBILE"],
-    "EMAIL": ["EMAIL"],
-    "BIRTHDAY": ["BIRTHDAY", "DOB", "DATE_OF_BIRTH", "DATE"],
-    "ADDRESS": ["ADDRESS"],
-    "GENDER": ["GENDER", "SEX"],
-    "IMAGE": ["IMAGE", "PHOTO"],
-    "VIDEO": ["VIDEO"],
-    "ID_NUMBER": ["ID_NUMBER", "IDENTIFICATION"],
-    "LINK": ["LINK", "URL"],
-}
 
-DEFAULT_QUESTION_TYPE = "TEXT"
+# Survey-related functions and templates removed
 
-
-def normalize_question_type(raw: Any) -> str:
-    token = _clean(str(raw) if raw is not None else None)
-    if not token:
-        return DEFAULT_QUESTION_TYPE
-    token = token.replace("-", "_").upper()
-    for canonical, aliases in QUESTION_TYPE_ALIASES.items():
-        if token == canonical or token in aliases:
-            return canonical
-    for canonical, aliases in QUESTION_TYPE_ALIASES.items():
-        if any(alias in token for alias in aliases):
-            return canonical
-    return DEFAULT_QUESTION_TYPE
-
-
-def register_survey_from_json(payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Persist a survey described by JSON payload."""
-    if not isinstance(payload, dict):
-        raise ValueError("payload must be a mapping")
-
-    name = _clean(payload.get("name")) or "Survey"
-    description = _clean(payload.get("description"))
-    category = _clean(payload.get("category"))
-    questions = payload.get("questions") or []
-    if not isinstance(questions, list):
-        raise ValueError("questions must be a list")
-
-    now = utcnow()
-    with mysql_engine.begin() as conn:
-        result = conn.execute(
-            text(
-                """
-                INSERT INTO surveys (name, description, category, is_active, created_at, updated_at)
-                VALUES (:name, :description, :category, 1, :now, :now)
-                """
-            ),
-            {"name": name, "description": description, "category": category, "now": now},
-        )
-        survey_id = int(result.lastrowid)
-
-        for idx, question in enumerate(questions, start=1):
-            if not isinstance(question, dict):
-                continue
-            q_type = normalize_question_type(question.get("question_type"))
-            options = question.get("options") or question.get("options_json") or []
-            if not isinstance(options, list):
-                options = []
-            entry = {
-                "survey_id": survey_id,
-                "question_type": q_type,
-                "question_text": _clean(question.get("question_text")) or f"Question {idx}",
-                "description": _clean(question.get("description")),
-                "font_size": question.get("font_size") if isinstance(question.get("font_size"), int) else None,
-                "options_json": json.dumps(options, ensure_ascii=False),
-                "is_required": 1 if question.get("is_required") else 0,
-                "display_order": question.get("order") if isinstance(question.get("order"), int) else idx,
-                "created_at": now,
-                "updated_at": now,
-            }
-            conn.execute(
-                text(
-                    """
-                    INSERT INTO survey_questions (
-                        survey_id,
-                        question_type,
-                        question_text,
-                        description,
-                        font_size,
-                        options_json,
-                        is_required,
-                        display_order,
-                        created_at,
-                        updated_at
-                    )
-                    VALUES (
-                        :survey_id,
-                        :question_type,
-                        :question_text,
-                        :description,
-                        :font_size,
-                        :options_json,
-                        :is_required,
-                        :display_order,
-                        :created_at,
-                        :updated_at
-                    )
-                    """
-                ),
-                entry,
-            )
-
-    logger.info("Survey %s created with %s questions", survey_id, len(questions))
-    return {"survey_id": survey_id, "question_count": len(questions)}
-
-
-def load_survey_meta(survey_id: int) -> Dict[str, Any]:
-    survey = fetchone(
-        "SELECT id, name, description FROM surveys WHERE id = :sid", {"sid": survey_id}
-    )
-    if not survey:
-        raise ValueError(f"survey {survey_id} not found")
-
-    rows = fetchall(
-        """
-        SELECT id,
-               question_type,
-               question_text,
-               description,
-               font_size,
-               options_json,
-               is_required,
-               display_order
-          FROM survey_questions
-         WHERE survey_id = :sid
-         ORDER BY display_order ASC, id ASC
-        """,
-        {"sid": survey_id},
-    )
-
-    questions: List[Dict[str, Any]] = []
-    for row in rows:
-        options: List[Any]
-        try:
-            options = json.loads(row.get("options_json") or "[]")
-        except json.JSONDecodeError:
-            options = []
-        questions.append(
-            {
-                "id": row["id"],
-                "question_type": row["question_type"],
-                "question_text": row["question_text"],
-                "description": row.get("description"),
-                "font_size": row.get("font_size"),
-                "options": options,
-                "is_required": bool(row.get("is_required")),
-                "display_order": row.get("display_order"),
-            }
-        )
-
-    return {
-        "id": survey["id"],
-        "name": survey["name"],
-        "description": survey.get("description") or "",
-        "questions": questions,
-    }
-
-
-def save_survey_submission(
-    survey_id: int,
-    answers: Dict[str, Any],
-    participant: Optional[Dict[str, Any]] = None,
-) -> None:
-    """Store a survey response."""
-    if not fetchone("SELECT 1 FROM surveys WHERE id=:sid", {"sid": survey_id}):
-        raise ValueError("survey not found")
-    if not isinstance(answers, dict):
-        raise ValueError("answers must be a mapping")
-
-    normalized: Dict[str, Any] = {}
-    for key, value in answers.items():
-        if not isinstance(key, str) or not key.startswith("q_"):
-            continue
-        suffix = key.split("_", 1)[1] if "_" in key else key
-        if isinstance(value, list):
-            normalized[suffix] = value
-        elif value is None:
-            normalized[suffix] = ""
-        else:
-            normalized[suffix] = str(value)
-
-    participant = participant or {}
-    external_id = (
-        participant.get("external_id")
-        or participant.get("id")
-        or participant.get("identifier")
-    )
-    display_name = participant.get("display_name") or participant.get("name")
-    email = participant.get("email")
-    phone = participant.get("phone")
-
-    member_id = upsert_member(
-        external_id,
-        display_name=display_name,
-        email=email,
-        phone=phone,
-        source="form",
-    )
-
-    now = utcnow()
-    execute(
-        """
-        INSERT INTO survey_responses (
-            survey_id,
-            member_id,
-            external_id,
-            answers_json,
-            is_completed,
-            completed_at,
-            source,
-            ip_address,
-            user_agent,
-            created_at,
-            updated_at
-        )
-        VALUES (
-            :survey_id,
-            :member_id,
-            :external_id,
-            :answers_json,
-            1,
-            :completed_at,
-            :source,
-            :ip_address,
-            :user_agent,
-            :created_at,
-            :updated_at
-        )
-        """,
-        {
-            "survey_id": survey_id,
-            "member_id": member_id,
-            "external_id": _clean(external_id),
-            "answers_json": json.dumps(normalized, ensure_ascii=False),
-            "completed_at": now,
-            "source": "form",
-            "ip_address": request.headers.get("X-Forwarded-For", request.remote_addr),
-            "user_agent": request.headers.get("User-Agent"),
-            "created_at": now,
-            "updated_at": now,
-        },
-    )
-
-
-SURVEY_TEMPLATE = """
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ survey.name or "Survey" }}</title>
-  <style>
-    body { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; margin: 0; background: #f6f7fb; color: #111827; }
-    .wrap { max-width: 720px; margin: 0 auto; padding: 32px 16px; }
-    .card { background: #ffffff; border-radius: 16px; box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12); padding: 28px; }
-    h1 { margin: 0 0 16px; font-size: 24px; }
-    .desc { margin: 0 0 24px; color: #475569; font-size: 15px; }
-    .participant { border: 1px dashed #cbd5f5; border-radius: 12px; padding: 16px; margin-bottom: 24px; background: #f8fafc; }
-    .participant label { display: block; font-weight: 500; margin-bottom: 12px; }
-    .participant input { width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #d1d9e6; font-size: 15px; margin-top: 6px; }
-    .question { margin-bottom: 22px; }
-    .prompt { display: block; font-weight: 600; margin-bottom: 8px; }
-    .required { color: #dc2626; margin-left: 4px; }
-    .description { font-size: 14px; color: #64748b; margin-bottom: 8px; }
-    input[type="text"], input[type="tel"], input[type="email"], input[type="date"], input[type="url"], textarea, select {
-      width: 100%; padding: 10px 12px; border-radius: 10px; border: 1px solid #d1d9e6; font-size: 15px; box-sizing: border-box;
-    }
-    textarea { min-height: 96px; resize: vertical; }
-    .options { display: flex; flex-wrap: wrap; gap: 8px; }
-    .chip { display: flex; align-items: center; gap: 6px; padding: 8px 12px; border: 1px solid #cbd5f5; border-radius: 999px; background: #f8fafc; cursor: pointer; }
-    .chip input { margin: 0; }
-    button { width: 100%; padding: 14px 16px; border: none; border-radius: 12px; background: #2563eb; color: #ffffff; font-size: 16px; font-weight: 600; cursor: pointer; }
-    button:disabled { opacity: 0.7; cursor: wait; }
-    .hint { margin-top: 16px; font-size: 13px; color: #64748b; }
-    .status { margin-top: 18px; font-size: 15px; }
-    .status.error { color: #b91c1c; }
-    .status.success { color: #047857; }
-  </style>
-</head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <h1>{{ survey.name or "Survey" }}</h1>
-      {% if survey.description %}
-      <p class="desc">{{ survey.description }}</p>
-      {% endif %}
-      <form id="surveyForm">
-        <input type="hidden" name="sid" value="{{ survey_id }}">
-        <div class="participant">
-          <label>
-            Contact (optional)
-            <input type="text" name="participant_id" placeholder="Email or phone">
-          </label>
-          <label>
-            Name (optional)
-            <input type="text" name="participant_name" placeholder="Your name">
-          </label>
-        </div>
-        {% for q in survey.questions %}
-        {% set qtype = (q.question_type or "").lower() %}
-        {% set field_name = "q_" ~ q.id %}
-        <div class="question" data-type="{{ qtype }}" data-id="{{ q.id }}"{% if q.is_required %} data-required="1"{% endif %}>
-          <label class="prompt">{{ q.question_text or ("Question " ~ loop.index) }}{% if q.is_required %}<span class="required">*</span>{% endif %}</label>
-          {% if q.description %}<div class="description">{{ q.description }}</div>{% endif %}
-          {% if qtype in ["text", "name", "address", "phone", "email", "birthday", "id_number", "link"] %}
-            {% set input_type = {
-              "text": "text",
-              "name": "text",
-              "address": "text",
-              "phone": "tel",
-              "email": "email",
-              "birthday": "date",
-              "id_number": "text",
-              "link": "url"
-            }[qtype] if qtype in ["text","name","address","phone","email","birthday","id_number","link"] else "text" %}
-            <input type="{{ input_type }}" name="{{ field_name }}"{% if q.is_required %} required{% endif %}>
-          {% elif qtype == "textarea" %}
-            <textarea name="{{ field_name }}"{% if q.is_required %} required{% endif %}></textarea>
-          {% elif qtype in ["single_choice", "gender"] %}
-            <div class="options">
-              {% for opt in q.options %}
-                {% set value = opt.value if opt.value is not none else (opt.label if opt.label is not none else "option_" ~ loop.index) %}
-                {% set label = opt.label if opt.label is not none else (opt.value if opt.value is not none else "Option " ~ loop.index) %}
-                <label class="chip">
-                  <input type="radio" name="{{ field_name }}" value="{{ value }}"{% if q.is_required and loop.first %} required{% endif %}>
-                  {{ label }}
-                </label>
-              {% endfor %}
-              {% if not q.options %}
-              <div>No options configured.</div>
-              {% endif %}
-            </div>
-          {% elif qtype == "multi_choice" %}
-            <div class="options">
-              {% for opt in q.options %}
-                {% set value = opt.value if opt.value is not none else (opt.label if opt.label is not none else "option_" ~ loop.index) %}
-                {% set label = opt.label if opt.label is not none else (opt.value if opt.value is not none else "Option " ~ loop.index) %}
-                <label class="chip">
-                  <input type="checkbox" name="{{ field_name }}" value="{{ value }}"{% if q.is_required and loop.first %} required{% endif %}>
-                  {{ label }}
-                </label>
-              {% endfor %}
-              {% if not q.options %}
-              <div>No options configured.</div>
-              {% endif %}
-            </div>
-          {% elif qtype == "select" %}
-            <select name="{{ field_name }}"{% if q.is_required %} required{% endif %}>
-              <option value="">Select??/option>
-              {% for opt in q.options %}
-                {% set value = opt.value if opt.value is not none else (opt.label if opt.label is not none else "option_" ~ loop.index) %}
-                {% set label = opt.label if opt.label is not none else (opt.value if opt.value is not none else "Option " ~ loop.index) %}
-                <option value="{{ value }}">{{ label }}</option>
-              {% endfor %}
-            </select>
-          {% else %}
-            <input type="text" name="{{ field_name }}"{% if q.is_required %} required{% endif %}>
-          {% endif %}
-        </div>
-        {% endfor %}
-        <button type="submit" id="submitBtn">Submit</button>
-        <p class="hint">We only use the information to support your request.</p>
-      </form>
-      <div id="formMessage" class="status" hidden></div>
-    </div>
-  </div>
-  <script>
-    const form = document.getElementById("surveyForm");
-    const messageEl = document.getElementById("formMessage");
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      messageEl.hidden = true;
-      const sidField = form.querySelector("input[name='sid']");
-      const sid = sidField ? Number(sidField.value) : NaN;
-      if (!sid) {
-        messageEl.textContent = "Invalid survey id.";
-        messageEl.className = "status error";
-        messageEl.hidden = false;
-        return;
-      }
-
-      const sections = Array.from(form.querySelectorAll(".question"));
-      const data = {};
-      let missingRequired = false;
-
-      sections.forEach((section) => {
-        const type = (section.getAttribute("data-type") || "").toLowerCase();
-        const id = section.getAttribute("data-id");
-        const name = "q_" + id;
-        const required = section.hasAttribute("data-required");
-
-        if (type === "multi_choice") {
-          const values = Array.from(
-            section.querySelectorAll("input[type='checkbox'][name='" + name + "']:checked")
-          ).map((el) => el.value);
-          if (required && values.length === 0) {
-            missingRequired = true;
-          }
-          data[name] = values;
-        } else if (type === "single_choice" || type === "gender") {
-          const chosen = section.querySelector("input[type='radio'][name='" + name + "']:checked");
-          if (required && !chosen) {
-            missingRequired = true;
-          }
-          data[name] = chosen ? chosen.value : "";
-        } else if (type === "select") {
-          const selectEl = section.querySelector("select[name='" + name + "']");
-          const value = selectEl ? selectEl.value : "";
-          if (required && !value) {
-            missingRequired = true;
-          }
-          data[name] = value;
-        } else {
-          const field = section.querySelector("[name='" + name + "']");
-          const value = field ? field.value : "";
-          if (required && !value) {
-            missingRequired = true;
-          }
-          data[name] = value;
-        }
-      });
-
-      if (missingRequired) {
-        messageEl.textContent = "Please complete the required fields.";
-        messageEl.className = "status error";
-        messageEl.hidden = false;
-        return;
-      }
-
-      const participant = {
-        external_id: (form.querySelector("input[name='participant_id']").value || "").trim(),
-        display_name: (form.querySelector("input[name='participant_name']").value || "").trim()
-      };
-      if (!participant.external_id) {
-        delete participant.external_id;
-      }
-      if (!participant.display_name) {
-        delete participant.display_name;
-      }
-
-      const payload = { sid, data, participant };
-
-      try {
-        form.querySelector("#submitBtn").disabled = true;
-        const response = await fetch("/__survey_submit", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        const result = await response.json().catch(() => ({ ok: false, error: "Unexpected response." }));
-        if (result.ok) {
-          messageEl.textContent = "Thank you! Your response has been recorded.";
-          messageEl.className = "status success";
-          form.reset();
-        } else {
-          messageEl.textContent = result.error || "Unable to submit the survey.";
-          messageEl.className = "status error";
-        }
-      } catch (err) {
-        console.error("Submit error:", err);
-        messageEl.textContent = "An unexpected error occurred.";
-        messageEl.className = "status error";
-      } finally {
-        form.querySelector("#submitBtn").disabled = false;
-        messageEl.hidden = false;
-      }
-    });
-  </script>
-</body>
-</html>
-"""
 
 
 @app.get("/")
@@ -1608,7 +1407,7 @@ def index():
 def serve_static(path: str):
     """Serve static files from dist directory"""
     # 检查是否是 API 路由，如果是则跳过
-    if path.startswith("api/") or path.startswith("__") or path.startswith("survey/"):
+    if path.startswith("api/") or path.startswith("__"):
         abort(404)
     
     # 优先从 dist 目录提供静态文件
@@ -1625,8 +1424,27 @@ def serve_static(path: str):
 
 
 @app.get("/health")
-def health() -> tuple[str, int]:
-    return "OK", 200
+def health() -> tuple[Dict[str, Any], int]:
+    """Health check endpoint with database connection test."""
+    health_status: Dict[str, Any] = {
+        "status": "healthy",
+        "database": "unknown",
+        "timestamp": datetime.datetime.now(timezone.utc).isoformat(),
+    }
+
+    try:
+        with mysql_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            conn.commit()
+        health_status["database"] = "connected"
+    except Exception as e:
+        logger.error("Health check failed: MySQL connection error: %s", e)
+        health_status["status"] = "unhealthy"
+        health_status["database"] = "disconnected"
+        health_status["error"] = str(e)
+        return health_status, 503
+
+    return health_status, 200
 
 
 # ==================== OAuth Routes ====================
@@ -1653,11 +1471,111 @@ def api_auth_config():
     })
 
 
+# OAuth state configuration
+OAUTH_VALID_PROVIDERS = {"google", "line", "facebook"}
+OAUTH_STATE_EXPIRY_SECONDS = 900  # 15 minutes
+
+
+@app.post("/api/auth/state/<provider>")
+def generate_oauth_state(provider: str):
+    """Generate and store a cryptographically secure OAuth state parameter.
+
+    The state parameter prevents CSRF attacks during OAuth flows by ensuring
+    the callback request originated from this application.
+
+    Args:
+        provider: OAuth provider name (google, line, or facebook)
+
+    Returns:
+        JSON response containing the generated state token
+    """
+    if provider not in OAUTH_VALID_PROVIDERS:
+        return jsonify({"error": "Invalid provider"}), 400
+
+    state = secrets.token_urlsafe(32)
+    session_key = f"oauth_state_{provider}"
+
+    session[session_key] = {
+        "state": state,
+        "created_at": utcnow().isoformat()
+    }
+    session.permanent = False  # Temporary session for OAuth flow
+
+    logger.info(f"Generated OAuth state for provider: {provider}")
+    return jsonify({"state": state})
+
+
+def validate_oauth_state(provider: str, received_state: Optional[str]) -> bool:
+    """Validate OAuth state parameter to prevent CSRF attacks.
+
+    Performs three security checks:
+    1. State parameter presence and match (constant-time comparison)
+    2. Expiration check (must be within OAUTH_STATE_EXPIRY_SECONDS)
+    3. One-time use (state is cleared after successful validation)
+
+    Args:
+        provider: OAuth provider name (google, line, or facebook)
+        received_state: State parameter from the OAuth callback
+
+    Returns:
+        True if state is valid and not expired, False otherwise
+    """
+    if not received_state:
+        logger.warning(f"OAuth callback missing state parameter: {provider}")
+        return False
+
+    session_key = f"oauth_state_{provider}"
+    stored_data = session.get(session_key)
+
+    if not stored_data:
+        logger.warning(f"No stored state found for provider: {provider}")
+        return False
+
+    stored_state = stored_data.get("state")
+    created_at_str = stored_data.get("created_at")
+
+    # Security: Use constant-time comparison to prevent timing attacks
+    if not secrets.compare_digest(received_state, stored_state):
+        logger.warning(f"OAuth state mismatch for provider: {provider}")
+        return False
+
+    # Validate expiration timestamp
+    if not created_at_str:
+        logger.error(f"Missing created_at timestamp for provider: {provider}")
+        return False
+
+    try:
+        created_at = datetime.datetime.fromisoformat(created_at_str)
+        # Make timezone-aware for comparison (utcnow returns naive UTC datetime)
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=datetime.timezone.utc)
+        age_seconds = (datetime.datetime.now(datetime.timezone.utc) - created_at).total_seconds()
+
+        if age_seconds > OAUTH_STATE_EXPIRY_SECONDS:
+            logger.warning(f"OAuth state expired for provider: {provider} (age: {age_seconds:.0f}s)")
+            return False
+    except (ValueError, TypeError) as e:
+        logger.error(f"Invalid created_at timestamp for provider: {provider}, error: {e}")
+        return False
+
+    # Security: Clear state after validation (one-time use prevents replay attacks)
+    session.pop(session_key, None)
+
+    logger.info(f"OAuth state validated successfully for provider: {provider}")
+    return True
+
+
 @app.get("/auth/google/callback")
 def auth_google_callback():
     """Handle Google OAuth callback."""
     code = request.args.get("code")
     error = request.args.get("error")
+    state = request.args.get("state")
+
+    # Validate state parameter to prevent CSRF attacks
+    if not validate_oauth_state("google", state):
+        logger.error("Google OAuth: Invalid or missing state parameter")
+        return redirect("/?error=oauth_csrf_validation_failed")
 
     if error:
         logger.error(f"Google OAuth error: {error}")
@@ -1722,6 +1640,12 @@ def auth_line_callback():
     """Handle LINE OAuth callback."""
     code = request.args.get("code")
     error = request.args.get("error")
+    state = request.args.get("state")
+
+    # Validate state parameter to prevent CSRF attacks
+    if not validate_oauth_state("line", state):
+        logger.error("LINE OAuth: Invalid or missing state parameter")
+        return redirect("/?error=oauth_csrf_validation_failed")
 
     if error:
         logger.error(f"LINE OAuth error: {error}")
@@ -1790,6 +1714,12 @@ def auth_facebook_callback():
     """Handle Facebook OAuth callback."""
     code = request.args.get("code")
     error = request.args.get("error")
+    state = request.args.get("state")
+
+    # Validate state parameter to prevent CSRF attacks
+    if not validate_oauth_state("facebook", state):
+        logger.error("Facebook OAuth: Invalid or missing state parameter")
+        return redirect("/?error=oauth_csrf_validation_failed")
 
     if error:
         logger.error(f"Facebook OAuth error: {error}")
@@ -1899,62 +1829,6 @@ def api_logout():
 def serve_uploads(filename: str):
     return send_from_directory(ASSET_LOCAL_DIR, filename, conditional=True)
 
-
-@app.get("/survey/form")
-def survey_form():
-    sid = request.args.get("sid", type=int)
-    if not sid:
-        abort(400, "missing sid")
-    try:
-        meta = load_survey_meta(sid)
-    except ValueError:
-        abort(404, "survey not found")
-    return render_template_string(SURVEY_TEMPLATE, survey=meta, survey_id=sid)
-
-
-@app.get("/__survey_load")
-def survey_load():
-    sid = request.args.get("sid", type=int)
-    if not sid:
-        return jsonify({"error": "missing sid"}), 400
-    try:
-        data = load_survey_meta(sid)
-    except ValueError as exc:
-        return jsonify({"error": str(exc)}), 404
-    return jsonify(data)
-
-
-@app.post("/__survey_submit")
-def survey_submit():
-    if request.is_json:
-        payload = request.get_json(force=True) or {}
-        sid = payload.get("sid") or payload.get("survey_id")
-        answers = payload.get("data") or payload.get("answers") or {}
-        participant = payload.get("participant") or {}
-    else:
-        data = request.form.to_dict(flat=False)
-        sid = data.get("sid", [None])[0]
-        answers = {
-            key: (values if len(values) > 1 else values[0])
-            for key, values in data.items()
-            if key.startswith("q_")
-        }
-        participant = {
-            "external_id": (data.get("participant_id", [""])[0] or "").strip(),
-            "display_name": (data.get("participant_name", [""])[0] or "").strip(),
-        }
-
-    try:
-        sid_int = int(sid)
-    except (TypeError, ValueError):
-        return jsonify({"ok": False, "error": "invalid sid"}), 400
-
-    try:
-        save_survey_submission(sid_int, answers, participant)
-    except ValueError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    return jsonify({"ok": True})
 
 
 if __name__ == "__main__":
