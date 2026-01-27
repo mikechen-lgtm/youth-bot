@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>隱私權條款 - AI × 公共參與 - 下班解憂所</title>
+    <meta name="description" content="AI × 公共參與 - 下班解憂所隱私權條款。了解我們如何收集、使用和保護您的個人資料。">
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS v3 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- AOS Animation Library -->
+    <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#1E5B8C',
+                        secondary: '#2C7BB5',
+                        tertiary: '#E8F4FC',
+                        accent: '#2D8659',
+                        light: '#F7F9FC',
+                        dark: '#134A73'
+                    },
+                    fontFamily: {
+                        sans: ['Noto Sans TC', 'sans-serif'],
+                        serif: ['Noto Serif TC', 'serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .text-shadow {
+                text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+            }
+            .transition-all-300 {
+                transition: all 0.3s ease;
+            }
+        }
+
+        /* 自定義滾動條 */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #1E5B8C;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #134A73;
+        }
+
+        /* 防止手機縮放後出現空白 */
+        html, body {
+            overflow-x: hidden;
+            width: 100%;
+            max-width: 100vw;
+        }
+    </style>
+</head>
+<body class="bg-light font-sans text-dark">
+    <!-- 導航欄 -->
+    <nav class="fixed top-0 left-0 w-full bg-white bg-opacity-90 z-50 shadow-sm">
+        <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+            <a href="/index.html" class="flex items-center space-x-2 hover:opacity-80 transition-all-300">
+                <span class="text-primary text-2xl font-bold">AI × 公共參與</span>
+                <span class="text-dark text-lg">下班解憂所</span>
+            </a>
+            <a href="/index.html" class="text-dark hover:text-primary transition-all-300 flex items-center">
+                <i class="fa fa-home text-xl mr-2"></i>
+                <span class="hidden md:inline">返回首頁</span>
+            </a>
+        </div>
+    </nav>
+
+    <!-- 主要內容 -->
+    <main class="pt-24 pb-16 min-h-screen">
+        <div class="container mx-auto px-4 max-w-4xl">
+
+            <!-- 頁面標題 -->
+            <div class="text-center mb-12" data-aos="fade-up">
+                <h1 class="text-3xl md:text-4xl font-bold text-primary mb-4">「青年下班解憂所」平台 隱私權保護政策</h1>
+                <p class="text-lg text-gray-600">Privacy Policy</p>
+                <div class="w-24 h-1 bg-primary mx-auto mt-6"></div>
+                <p class="text-sm text-gray-500 mt-4">版本日期：2026年2月1日</p>
+            </div>
+
+            <!-- 隱私政策內容 -->
+            <article class="bg-white rounded-2xl shadow-md p-8 md:p-12 mb-8" data-aos="fade-up" data-aos-delay="100">
+
+                <!-- 前言 -->
+                <div class="mb-10">
+                    <p class="mb-4 leading-relaxed text-gray-700 text-lg">
+                        歡迎您使用「青年下班解憂所」平台（以下簡稱「本平台」）。本平台致力於提供結合 AI 科技與公共參與的體驗。我們非常重視您的隱私權，並承諾依據中華民國《個人資料保護法》（以下簡稱「個資法」）及本隱私權政策（以下簡稱「本政策」）保護您的個人資料。
+                    </p>
+                    <p class="mb-4 leading-relaxed text-gray-700 text-lg">
+                        請您在使用本平台服務（包括但不限於 AI 智能助理對話、會員登入、政策意見反饋等）前，詳細閱讀以下條款。
+                    </p>
+                </div>
+
+                <!-- 第一條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        一、隱私權政策適用範圍
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            本政策適用於您在使用本平台服務過程中，所涉及的個人資料蒐集、處理、利用與國際傳輸等行為。
+                        </p>
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            本政策不適用於本平台以外的相關連結網站，亦不適用於非本平台所委託或參與管理的人員。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第二條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        二、個人資料之蒐集目的與類別
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            本平台蒐集您的個人資料，主要用於提供 AI 互動服務、身分驗證、系統維運及協助政府機關進行公共政策分析。
+                        </p>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3 mt-6">1. 蒐集目的</h3>
+                        <ul class="list-disc list-inside space-y-2 mb-4 text-gray-700 ml-4">
+                            <li><strong>090 消費者、客戶管理與服務：</strong>處理會員註冊、登入驗證、客服諮詢。</li>
+                            <li><strong>136 資（通）訊與資料庫管理：</strong>AI 模型的訓練優化（去識別化後）、系統除錯。</li>
+                            <li><strong>157 調查、統計與研究分析：</strong>將使用者於 AI 對話中的意見轉譯為政策建議，供桃園市政府青年事務局參考（此部分產出將不包含可識別個人的資訊）。</li>
+                            <li><strong>182 其他諮詢與顧問服務：</strong>透過 AI 智能助理提供療癒對話與資訊引導。</li>
+                        </ul>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3 mt-6">2. 蒐集類別</h3>
+                        <ul class="list-disc list-inside space-y-2 mb-4 text-gray-700 ml-4">
+                            <li><strong>C001 辨識個人者：</strong>若您選擇註冊或登入，我們可能會蒐集您的姓名、電子郵件地址、手機號碼、社群帳號 ID（如 LINE ID、Google ID 等）。</li>
+                            <li><strong>C011 個人描述：</strong>如您在對話中主動提供的年齡、性別、職業類別（用於政策分群分析）。</li>
+                            <li><strong>數位足跡與對話紀錄：</strong>
+                                <ul class="list-circle list-inside ml-6 mt-2 space-y-1">
+                                    <li>AI 對話內容：您輸入給 AI 客服機器人的所有文字訊息。</li>
+                                    <li>設備資訊：IP 位址、瀏覽器類型、使用時間、Cookie 等。</li>
+                                </ul>
+                            </li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- 第三條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        三、AI 智能助理（Chatbot）與對話資料特別條款
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            本平台核心功能包含 AI 智能助理服務，關於您與機器人的互動，請特別注意以下事項：
+                        </p>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3 mt-6">對話資料之使用：</h3>
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            您與 AI 機器人的對話內容將被系統記錄，用於：
+                        </p>
+                        <ul class="list-disc list-inside space-y-2 mb-4 text-gray-700 ml-4">
+                            <li>即時生成回應以解決您的問題或安撫情緒。</li>
+                            <li>系統將針對對話內容進行語意分析與議題歸納，轉譯為「政策建議報告」。此類報告呈交予公務機關時，將嚴格執行「去識別化」處理，無法回溯至特定個人。</li>
+                            <li>優化 AI 模型的準確度與服務品質。</li>
+                        </ul>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3 mt-6">敏感性資料提醒：</h3>
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            AI 機器人主要用於情緒紓解與公共事務參與，請勿在對話框中輸入您的身分證字號、信用卡號、醫療病歷、或是任何您不希望被記錄的極度私密資訊。
+                        </p>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3 mt-6">生成內容免責：</h3>
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            AI 生成之回應僅供參考與陪伴，不代表專業醫療診斷或具有法律效力的政府正式公文。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第四條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        四、個人資料之利用期間、地區、對象及方式
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <h3 class="text-xl font-semibold text-dark mb-3">利用期間：</h3>
+                        <p class="mb-6 leading-relaxed text-gray-700">
+                            自您開始使用本平台服務之日起，至您要求停止使用或本平台終止服務之日止。
+                        </p>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3">利用地區：</h3>
+                        <p class="mb-6 leading-relaxed text-gray-700">
+                            中華民國領域內（台澎金馬地區），以及本平台伺服器主機所在地（如涉及雲端服務或跨境資料處理，亦將依法採取適當之資料保護措施）。
+                        </p>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3">利用對象：</h3>
+                        <ul class="list-disc list-inside space-y-2 mb-6 text-gray-700 ml-4">
+                            <li><strong>本平台營運單位（美好影響力社會創新公司）：</strong>負責本平台之營運管理、服務提供、資料保護及相關活動之執行。</li>
+                            <li><strong>受本平台委託之技術服務合作夥伴：</strong>僅於提供系統維運、資訊安全、AI 模型運作及資料庫管理等必要範圍內，依本平台指示處理資料，並負有保密義務。</li>
+                            <li><strong>公務機關（如：桃園市政府青年事務局）：</strong>僅接收經統計、分類後之匿名化或去識別化數據分析成果，除非您於特定活動中另行明確同意，否則不會提供可識別個人身分之資料以供後續聯繫。</li>
+                        </ul>
+
+                        <h3 class="text-xl font-semibold text-dark mb-3">利用方式：</h3>
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            以自動化機器或其他非自動化方式進行，包括但不限於系統運作、資料分析、服務優化及必要之聯繫通知。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第五條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        五、資料之保護與安全性
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <ul class="list-disc list-inside space-y-3 text-gray-700 ml-4">
+                            <li class="leading-relaxed">本平台主機均設有防火牆、防毒系統等相關的各項資訊安全設備及必要的安全防護措施，加以保護網站及您的個人資料。</li>
+                            <li class="leading-relaxed">針對 AI 客服機器人登入機制，我們採用加密技術（如 SSL/TLS）傳輸您的登入憑證，防止資料在傳輸過程中被竊取。</li>
+                            <li class="leading-relaxed">僅由經過授權的人員才能接觸您的個人資料，相關處理人員皆簽有保密合約，如有違反保密義務者，將會受到相關的法律處分。</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- 第六條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        六、個人資料權利行使
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            依據中華民國《個人資料保護法》第三條規定，您就本平台所蒐集、處理或利用之個人資料，得行使下列權利：
+                        </p>
+                        <ul class="list-disc list-inside space-y-2 mb-6 text-gray-700 ml-4">
+                            <li>查詢或請求閱覽。</li>
+                            <li>請求製給複製本。</li>
+                            <li>請求補充或更正。</li>
+                            <li>請求停止蒐集、處理或利用。</li>
+                            <li>請求刪除。</li>
+                        </ul>
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            本平台目前未提供使用者查詢或存取個人歷史對話紀錄之功能，部分資料亦可能僅於系統運作或即時服務所需期間內暫存處理。若您欲行使上述權利，請透過本政策末端所載之聯絡方式與我們聯繫，本平台將依法協助處理。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第七條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        七、Cookie 之使用
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            為了提供您最佳的服務，本平台會在您的電腦中放置並取用我們的 Cookie，若您不願接受 Cookie 的寫入，您可在您使用的瀏覽器功能項中設定隱私權等級為高，即可拒絕 Cookie 的寫入，但可能會導致網站某些功能無法正常執行（例如無法保持登入狀態）。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第八條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        八、自我保護措施
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            請妥善保管您的登入帳號、密碼及任何個人資料，請勿將任何個人資料，尤其是密碼提供給任何人。在您完成 AI 對話或使用完本平台服務後，務必記得登出帳戶，若您是與他人共享電腦或使用公共電腦，切記要關閉瀏覽器視窗，以防止他人讀取您的個人資料或信件。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第九條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        九、隱私權政策之修正
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            本隱私權政策將因應需求隨時進行修正，修正後的條款將刊登於網站上，不另行個別通知。您若於修改生效後繼續使用本服務，即代表您同意修改後的隱私權政策。
+                        </p>
+                    </div>
+                </section>
+
+                <!-- 第十條 -->
+                <section class="mb-10">
+                    <h2 class="text-2xl font-bold text-dark mb-4 pb-2 border-b-2 border-primary">
+                        十、聯絡我們
+                    </h2>
+                    <div class="prose prose-lg max-w-none">
+                        <p class="mb-4 leading-relaxed text-gray-700">
+                            若您對本隱私權政策有任何疑問，或欲行使個資法相關權利，請透過以下方式聯繫：
+                        </p>
+                        <ul class="list-none space-y-2 text-gray-700 ml-4">
+                            <li><strong>營運單位：</strong>美好影響力社會創新公司</li>
+                            <li><strong>電子郵件：</strong><a href="mailto:contact@wellimpact.org" class="text-primary hover:text-secondary underline">contact@wellimpact.org</a>（本平台聯絡信箱）</li>
+                            <li><strong>聯絡地址：</strong>桃園市中壢區領航南路二段382號</li>
+                        </ul>
+                    </div>
+                </section>
+
+                <!-- 最後更新日期 -->
+                <div class="mt-12 pt-8 border-t border-gray-200 text-center">
+                    <p class="text-sm text-gray-500">
+                        最後更新日期：2026年2月1日
+                    </p>
+                </div>
+            </article>
+
+            <!-- 返回頂部按鈕 -->
+            <div class="text-center mt-8">
+                <a href="#"
+                   onclick="window.scrollTo({top: 0, behavior: 'smooth'}); return false;"
+                   class="inline-flex items-center text-primary hover:text-secondary transition-all-300 text-lg">
+                    <i class="fa fa-arrow-up mr-2"></i>
+                    返回頂部
+                </a>
+            </div>
+        </div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="py-12 px-4 bg-dark text-white">
+        <div class="container mx-auto max-w-6xl">
+            <div class="flex flex-col md:flex-row justify-between items-center">
+                <div class="mb-8 md:mb-0">
+                    <h3 class="text-2xl font-bold mb-2">AI × 公共參與</h3>
+                    <p class="text-xl">下班解憂所</p>
+                    <p class="text-white opacity-70 mt-2">下班也能公共參與的療癒實驗計畫</p>
+                </div>
+                <div class="flex flex-col items-center md:items-end">
+                    <p class="text-xl font-bold mb-2">成就桃園青年，做平凡的超人</p>
+                    <p class="text-white opacity-70">你的煩惱，我們聽見。你的想法，值得被採納</p>
+                </div>
+            </div>
+
+            <div class="border-t border-white border-opacity-20 mt-8 pt-8 text-center">
+                <div class="flex flex-col md:flex-row justify-center items-center gap-3 md:gap-4 text-white opacity-70">
+                    <p>© 2025 AI × 公共參與 - 下班解憂所. 版權所有.</p>
+                    <span class="hidden md:inline opacity-50">|</span>
+                    <a href="/privacy.html"
+                       class="text-white opacity-90 font-semibold underline decoration-1 underline-offset-4 hover:opacity-100 transition-all-300">
+                        隱私權條款
+                    </a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- React 聊天機器人掛載點 -->
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- AOS 初始化 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            AOS.init({
+                duration: 800,
+                once: true
+            });
+        });
+    </script>
+</body>
+</html>
