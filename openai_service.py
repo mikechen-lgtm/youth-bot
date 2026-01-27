@@ -16,7 +16,7 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
-# 導入時間工具
+# 導入時間工具（保留用於非活動查詢的時間問題）
 try:
     from time_tools import TIME_TOOLS_DEFINITIONS, execute_time_tool
     TIME_TOOLS_AVAILABLE = True
@@ -24,6 +24,23 @@ try:
 except ImportError as e:
     TIME_TOOLS_AVAILABLE = False
     logger.warning("時間工具模組載入失敗: %s", e)
+
+# 導入資料庫工具
+try:
+    from database_tools import DATABASE_TOOLS_DEFINITIONS, execute_database_tool
+    DATABASE_TOOLS_AVAILABLE = True
+    logger.info("資料庫工具模組載入成功")
+except ImportError as e:
+    DATABASE_TOOLS_AVAILABLE = False
+    logger.warning("資料庫工具模組載入失敗: %s", e)
+
+# 合併所有工具定義（優先使用資料庫工具）
+ALL_TOOLS_DEFINITIONS = []
+if DATABASE_TOOLS_AVAILABLE:
+    ALL_TOOLS_DEFINITIONS.extend(DATABASE_TOOLS_DEFINITIONS)
+# 時間工具作為備用（僅用於非活動查詢的時間問題）
+# if TIME_TOOLS_AVAILABLE:
+#     ALL_TOOLS_DEFINITIONS.extend(TIME_TOOLS_DEFINITIONS)
 
 # Global state
 OPENAI_CLIENT: Optional[OpenAI] = None
@@ -297,7 +314,7 @@ def _process_function_calls(
     response = OPENAI_CLIENT.chat.completions.create(
         model=resolved_model,
         messages=messages,
-        tools=TIME_TOOLS_DEFINITIONS,
+        tools=ALL_TOOLS_DEFINITIONS if ALL_TOOLS_DEFINITIONS else TIME_TOOLS_DEFINITIONS,
         tool_choice="auto",
         max_tokens=50,
         temperature=0.3,
@@ -332,7 +349,17 @@ def _process_function_calls(
             arguments = {}
 
         logger.info("執行工具: %s，參數: %s", function_name, arguments)
-        result = execute_time_tool(function_name, arguments)
+
+        # 根據函數名稱分派到對應的執行函數
+        if function_name in ["get_past_activities", "get_recent_activities"]:
+            result = execute_database_tool(function_name, arguments)
+        elif function_name in ["get_current_time_info", "calculate_date_range"]:
+            # 時間工具已整合進資料庫工具，保留此處以防萬一
+            result = execute_time_tool(function_name, arguments) if TIME_TOOLS_AVAILABLE else {
+                "error": "時間工具已停用，請使用 get_recent_activities 或 get_past_activities"
+            }
+        else:
+            result = {"error": f"未知的工具函數: {function_name}"}
 
         yield {
             "type": "function_call",
@@ -348,15 +375,52 @@ def _process_function_calls(
     return messages
 
 
+def _clean_messages_for_responses_api(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    清理 messages 以兼容 Responses API
+
+    Responses API 不支持：
+    - tool_calls 字段
+    - role="tool" 的消息
+
+    此函數將 function calling 的結果合併到 assistant 消息中
+    """
+    cleaned = []
+
+    for msg in messages:
+        role = msg.get("role")
+
+        # 過濾掉 tool 角色的消息
+        if role == "tool":
+            continue
+
+        # 處理包含 tool_calls 的 assistant 消息
+        if role == "assistant" and "tool_calls" in msg:
+            # 移除 tool_calls，只保留 content
+            cleaned_msg = {
+                "role": "assistant",
+                "content": msg.get("content") or "",
+            }
+            cleaned.append(cleaned_msg)
+        else:
+            # 保留其他消息
+            cleaned.append(msg)
+
+    return cleaned
+
+
 def _stream_rag_response(
     messages: List[Dict[str, Any]],
     resolved_model: str,
     vector_store_id: str,
 ) -> Generator[Dict[str, Any], None, None]:
     """執行 RAG streaming 生成"""
+    # 清理 messages 以兼容 Responses API
+    cleaned_messages = _clean_messages_for_responses_api(messages)
+
     with OPENAI_CLIENT.responses.stream(
         model=resolved_model,
-        input=messages,
+        input=cleaned_messages,
         tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}],
         include=["file_search_call.results"],
     ) as stream:

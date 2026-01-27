@@ -84,8 +84,10 @@ def create_health_checks(
     def check_rag_store() -> None:
         if vector_store_id is None:
             raise RuntimeError("RAG vector store ID not set")
-        store = openai_client.beta.vector_stores.retrieve(vector_store_id)
-        if store.file_counts.total == 0:
+        # 使用正確的 API 路徑（不通過 beta）
+        store = openai_client.vector_stores.retrieve(vector_store_id)
+        file_counts = getattr(store, 'file_counts', None)
+        if file_counts and getattr(file_counts, 'total', 0) == 0:
             logger.warning("RAG vector store has no files")
 
     health.add_check('rag_store', check_rag_store)

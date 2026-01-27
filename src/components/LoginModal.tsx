@@ -16,13 +16,19 @@ interface LoginModalProps {
 }
 
 export function LoginModal({ open, onOpenChange }: LoginModalProps) {
-  const { login, authConfig } = useAuth();
+  const { login, authConfig, isAuthenticated } = useAuth();
 
   const handleLogin = (provider: 'google' | 'line' | 'facebook') => {
     login(provider);
   };
 
-  if (!open) return null;
+  // 雙重檢查：如果已登入或 open 為 false，都不顯示
+  if (!open || isAuthenticated) {
+    console.log('[LoginModal] Not rendering:', { open, isAuthenticated });
+    return null;
+  }
+
+  console.log('[LoginModal] RENDERING LOGIN UI:', { open, isAuthenticated });
 
   // 使用絕對定位，從頂部延伸到底部，蓋住輸入框
   return (

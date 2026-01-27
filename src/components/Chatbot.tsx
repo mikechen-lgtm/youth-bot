@@ -36,6 +36,14 @@ export function Chatbot() {
     setShowLoginModal(true);
   }, []);
 
+  // 登入成功後自動關閉登入視窗
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('[Chatbot] User authenticated, forcing login modal to close');
+      setShowLoginModal(false);
+    }
+  }, [isAuthenticated]);
+
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector(

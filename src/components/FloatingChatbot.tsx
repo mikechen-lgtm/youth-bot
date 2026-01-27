@@ -39,6 +39,11 @@ export function FloatingChatbot() {
     console.log('[FloatingChatbot] handleLoginRequired called, setting showLoginModal=true');
     setShowLoginModal(true);
   }, []);
+
+  // 調試：監控認證狀態變化
+  useEffect(() => {
+    console.log('[FloatingChatbot] Auth state:', { isAuthenticated, isLoading, showLoginModal, user: user?.name });
+  }, [isAuthenticated, isLoading, showLoginModal, user]);
   
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -406,6 +411,14 @@ export function FloatingChatbot() {
     }
   }, [isClosed, isAuthenticated, isLoading]);
 
+  // 登入成功後自動關閉登入視窗
+  useEffect(() => {
+    if (isAuthenticated) {
+      console.log('[FloatingChatbot] User authenticated, forcing login modal to close');
+      setShowLoginModal(false);
+    }
+  }, [isAuthenticated]);
+
   // 觸發按鈕 - 使用 Portal 確保真正 fixed 定位
   const renderTriggerButton = () => (
     <FixedPositionPortal>
@@ -633,8 +646,8 @@ export function FloatingChatbot() {
                 </div>
               </CardContent>
             )}
-            {/* 登入彈窗 - 放在Card內部，跟隨聊天框移動，縮小時隱藏 */}
-            {!isMinimized && (
+            {/* 登入彈窗 - 放在Card內部，跟隨聊天框移動，縮小時隱藏，登入後自動關閉 */}
+            {!isMinimized && !isAuthenticated && (
               <LoginModal open={showLoginModal} onOpenChange={setShowLoginModal} />
             )}
           </Card>
