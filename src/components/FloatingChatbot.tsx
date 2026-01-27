@@ -520,10 +520,10 @@ export function FloatingChatbot() {
                     <Bot className="w-5 h-5 text-white" />
                   </div>
                   <div>
-                    <h3 className="text-base font-semibold text-white tracking-wide">桃園市青年事務局</h3>
+                    <h3 className="text-base font-semibold text-white tracking-wide">青年事務解憂 AI</h3>
                     {!isMinimized && (
                       <p className="text-xs text-white/80 mt-0.5">
-                        智慧客服系統
+                        說說你的煩惱，一起找到下一步
                       </p>
                     )}
                   </div>
