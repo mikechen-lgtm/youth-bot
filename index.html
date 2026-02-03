@@ -4,12 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AI × 公共參與 - 下班解憂所</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="alternate icon" href="/favicon.ico">
+
     <!-- Tailwind CSS v3 -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome -->
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <!-- Icon8 -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/icon8/1.0.2/icon8.min.css">
     <!-- AOS Animation Library -->
     <link href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
@@ -90,7 +93,6 @@
             <div class="hidden md:flex space-x-6">
                 <a href="#about" class="hover:text-primary transition-all-300">核心理念</a>
                 <a href="#elements" class="hover:text-primary transition-all-300">三大元素</a>
-                <a href="#roadmap" class="hover:text-primary transition-all-300">Roadmap</a>
                 <a href="#goals" class="hover:text-primary transition-all-300">我們的目標</a>
             </div>
             <button class="md:hidden text-dark focus:outline-none" id="menu-toggle">
@@ -102,7 +104,6 @@
             <div class="container mx-auto px-4 py-2 flex flex-col space-y-3">
                 <a href="#about" class="py-2 hover:text-primary transition-all-300">核心理念</a>
                 <a href="#elements" class="py-2 hover:text-primary transition-all-300">三大元素</a>
-                <a href="#roadmap" class="py-2 hover:text-primary transition-all-300">Roadmap</a>
                 <a href="#goals" class="py-2 hover:text-primary transition-all-300">我們的目標</a>
             </div>
         </div>
@@ -279,8 +280,8 @@
                 </div>
                 <div class="md:w-1/2" data-aos="fade-left" data-aos-delay="100">
                     <div class="flex items-center mb-4">
-                        <div class="w-12 h-12 bg-tertiary bg-opacity-20 rounded-full flex items-center justify-center mr-4">
-                            <span class="text-tertiary text-2xl font-bold">03</span>
+                        <div class="w-12 h-12 bg-dark bg-opacity-20 rounded-full flex items-center justify-center mr-4">
+                            <span class="text-dark text-2xl font-bold">03</span>
                         </div>
                         <h3 class="text-2xl font-bold">Step 3｜你的分享，將會被聽見</h3>
                     </div>
@@ -294,60 +295,6 @@
         </div>
     </section>
 
-    <!-- Roadmap -->
-    <section id="roadmap" class="py-16 px-4 bg-white">
-        <div class="container mx-auto max-w-6xl">
-            <h2 class="text-3xl md:text-4xl font-bold text-center mb-12" data-aos="fade-up">Roadmap</h2>
-            
-            <div class="space-y-8">
-                <!-- 步驟1 -->
-                <div class="flex flex-col md:flex-row items-start" data-aos="fade-up">
-                    <div class="md:w-1/4 mb-4 md:mb-0 flex justify-center md:justify-start">
-                        <div class="w-16 h-16 bg-primary bg-opacity-20 rounded-full flex items-center justify-center">
-                            <span class="text-primary text-2xl font-bold">01</span>
-                        </div>
-                    </div>
-                    <div class="md:w-3/4">
-                        <h3 class="text-xl font-bold mb-2">AI Agent 平台建置</h3>
-                        <p class="text-lg leading-relaxed">
-                            建置 AI Agent（智能助理系統）平台，青年輸入煩惱即可獲得對應政策建議。衍伸效益：以最低成本實作 AI 效益，評估未來擴大導入與應用。
-                        </p>
-                    </div>
-                </div>
-                
-                <!-- 步驟2 -->
-                <div class="flex flex-col md:flex-row items-start" data-aos="fade-up" data-aos-delay="100">
-                    <div class="md:w-1/4 mb-4 md:mb-0 flex justify-center md:justify-start">
-                        <div class="w-16 h-16 bg-secondary bg-opacity-20 rounded-full flex items-center justify-center">
-                            <span class="text-secondary text-2xl font-bold">02</span>
-                        </div>
-                    </div>
-                    <div class="md:w-3/4">
-                        <h3 class="text-xl font-bold mb-2">線上線下結合</h3>
-                        <p class="text-lg leading-relaxed">
-                            線上線下結合，以實體活動輔助行銷，舉辦 3 場「下班解憂所」快閃活動，設置留言牆、政策扭蛋箱等互動區。
-                        </p>
-                    </div>
-                </div>
-                
-                <!-- 步驟3 -->
-                <div class="flex flex-col md:flex-row items-start" data-aos="fade-up" data-aos-delay="200">
-                    <div class="md:w-1/4 mb-4 md:mb-0 flex justify-center md:justify-start">
-                        <div class="w-16 h-16 bg-tertiary bg-opacity-20 rounded-full flex items-center justify-center">
-                            <span class="text-tertiary text-2xl font-bold">03</span>
-                        </div>
-                    </div>
-                    <div class="md:w-3/4">
-                        <h3 class="text-xl font-bold mb-2">數據分析與白皮書</h3>
-                        <p class="text-lg leading-relaxed">
-                            將語意資料進行 NLP 分析，整理 TOP5 議題與建議。產出《青年真心話白皮書》，提供市府作為政策參考。
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
     <!-- 我們的目標 -->
     <section id="goals" class="py-16 px-4 bg-light">
         <div class="container mx-auto max-w-6xl">
@@ -356,7 +303,7 @@
             <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
                 <!-- 目標1 -->
                 <div class="bg-white rounded-xl p-6 shadow-md" data-aos="fade-up">
-                    <h3 class="text-xl font-bold mb-4">🟦 讓更多人走進公共參與</h3>
+                    <h3 class="text-xl font-bold mb-4"><i class="fa fa-users text-primary mr-2"></i>讓更多人走進公共參與</h3>
                     <p class="text-lg leading-relaxed">
                         不管你是不是熟悉公共議題，<br>
                         下班後，都可以用輕鬆的方式說出自己的煩惱與想法，<br>
@@ -366,7 +313,7 @@
 
                 <!-- 目標2 -->
                 <div class="bg-white rounded-xl p-6 shadow-md" data-aos="fade-up" data-aos-delay="100">
-                    <h3 class="text-xl font-bold mb-4">🟦 把日常煩惱，變成大家關心的事</h3>
+                    <h3 class="text-xl font-bold mb-4"><i class="fa fa-comments text-secondary mr-2"></i>把日常煩惱，變成大家關心的事</h3>
                     <p class="text-lg leading-relaxed">
                         透過下班解憂所的對話與提案，<br>
                         把貼近日常的生活經驗與情緒，<br>
@@ -376,7 +323,7 @@
 
                 <!-- 目標3 -->
                 <div class="bg-white rounded-xl p-6 shadow-md" data-aos="fade-up" data-aos-delay="200">
-                    <h3 class="text-xl font-bold mb-4">🟦 讓關心，成為改變的開始</h3>
+                    <h3 class="text-xl font-bold mb-4"><i class="fa fa-lightbulb-o text-dark mr-2"></i>讓關心，成為改變的開始</h3>
                     <p class="text-lg leading-relaxed">
                         把貼近生活的經驗，<br>
                         轉化為可以被延伸討論的公共議題，<br>
@@ -668,455 +615,7 @@
                     }
                 });
             });
-            
-            // 聊天機器人功能
-            const chatbotToggle = document.getElementById('chatbot-toggle');
-            const chatbotWindow = document.getElementById('chatbot-window');
-            const closeChatbot = document.getElementById('close-chatbot');
-            const chatMessages = document.getElementById('chat-messages');
-            const chatInput = document.getElementById('chat-input');
-            const sendMessage = document.getElementById('send-message');
-            
-            // 切換聊天視窗顯示/隱藏
-            chatbotToggle.addEventListener('click', function() {
-                chatbotWindow.classList.toggle('hidden');
-            });
-            
-            closeChatbot.addEventListener('click', function() {
-                chatbotWindow.classList.add('hidden');
-            });
-            
-            // 發送消息
-            let sessionId = null; // 用於保存對話 session ID
 
-            function sendChatMessage() {
-                const message = chatInput.value.trim();
-
-                if (message) {
-                    // 添加使用者消息
-                    addUserMessage(message);
-
-                    // 清空輸入框
-                    chatInput.value = '';
-
-                    // 禁用輸入框和發送按鈕
-                    chatInput.disabled = true;
-                    sendMessage.disabled = true;
-
-                    // 顯示正在輸入指示器
-                    const typingIndicator = addTypingIndicator();
-
-                    // 調用後端 API
-                    callChatAPI(message, typingIndicator);
-                }
-            }
-
-            // 調用後端聊天 API
-            function callChatAPI(message, typingIndicator) {
-                const payload = {
-                    message: message
-                };
-
-                // 如果有 session_id，加入請求
-                if (sessionId) {
-                    payload.session_id = sessionId;
-                }
-
-                // 使用 fetch 發送請求
-                fetch('/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                })
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('網絡響應異常');
-                    }
-
-                    // 移除正在輸入指示器
-                    if (typingIndicator) {
-                        typingIndicator.remove();
-                    }
-
-                    // 創建一個新的機器人消息容器
-                    const botMessageContainer = createBotMessageContainer();
-                    const botMessageText = botMessageContainer.querySelector('p');
-
-                    // 處理 SSE 串流
-                    const reader = response.body.getReader();
-                    const decoder = new TextDecoder();
-                    let buffer = '';
-                    let fullText = '';
-
-                    function processStream() {
-                        reader.read().then(({ done, value }) => {
-                            if (done) {
-                                // 串流結束，重新啟用輸入框
-                                chatInput.disabled = false;
-                                sendMessage.disabled = false;
-                                chatInput.focus();
-                                return;
-                            }
-
-                            // 解碼數據
-                            buffer += decoder.decode(value, { stream: true });
-
-                            // 按行處理 SSE 數據
-                            const lines = buffer.split('\n');
-                            buffer = lines.pop(); // 保留最後一個未完成的行
-
-                            lines.forEach(line => {
-                                if (line.startsWith('data: ')) {
-                                    try {
-                                        const data = JSON.parse(line.substring(6));
-
-                                        // 處理不同類型的事件
-                                        if (data.type === 'session') {
-                                            // 保存 session_id
-                                            if (data.session_id) {
-                                                sessionId = data.session_id;
-                                            }
-                                        } else if (data.type === 'text') {
-                                            // 追加文本內容
-                                            fullText += data.content;
-                                            botMessageText.innerHTML = formatBotMessage(fullText);
-
-                                            // 自動滾動到底部
-                                            chatMessages.scrollTop = chatMessages.scrollHeight;
-                                        } else if (data.type === 'sources') {
-                                            // 處理資料來源
-                                            if (data.content && data.content.length > 0) {
-                                                const sourcesHtml = createSourcesHtml(data.content);
-                                                botMessageText.innerHTML += sourcesHtml;
-                                                chatMessages.scrollTop = chatMessages.scrollHeight;
-                                            }
-                                        } else if (data.type === 'end') {
-                                            // 串流結束
-                                            console.log('Stream ended');
-                                        } else if (data.type === 'error') {
-                                            // 錯誤處理
-                                            botMessageText.innerHTML = '<span style="color: #dc2626;">抱歉，處理您的請求時發生錯誤。請稍後再試。</span>';
-                                        }
-                                    } catch (e) {
-                                        console.error('解析 SSE 數據錯誤:', e);
-                                    }
-                                }
-                            });
-
-                            // 繼續讀取
-                            processStream();
-                        }).catch(err => {
-                            console.error('讀取串流錯誤:', err);
-                            botMessageText.innerHTML = '<span style="color: #dc2626;">讀取回應時發生錯誤。</span>';
-                            chatInput.disabled = false;
-                            sendMessage.disabled = false;
-                        });
-                    }
-
-                    processStream();
-                })
-                .catch(error => {
-                    console.error('API 調用錯誤:', error);
-
-                    // 移除正在輸入指示器
-                    if (typingIndicator) {
-                        typingIndicator.remove();
-                    }
-
-                    // 顯示錯誤消息
-                    addBotMessage('抱歉，無法連接到服務器。請檢查網絡連接後再試。');
-
-                    // 重新啟用輸入框
-                    chatInput.disabled = false;
-                    sendMessage.disabled = false;
-                });
-            }
-
-            // 添加正在輸入指示器
-            function addTypingIndicator() {
-                const indicator = document.createElement('div');
-                indicator.className = 'flex mb-4';
-                indicator.innerHTML = `
-                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white mr-2 flex-shrink-0">
-                        <i class="fa fa-comments"></i>
-                    </div>
-                    <div class="bg-white p-3 rounded-lg shadow-sm">
-                        <p style="color: #6b7280;">正在輸入<span class="typing-dots">...</span></p>
-                    </div>
-                `;
-                chatMessages.appendChild(indicator);
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-                return indicator;
-            }
-
-            // 創建機器人消息容器
-            function createBotMessageContainer() {
-                const container = document.createElement('div');
-                container.className = 'flex mb-4';
-                container.innerHTML = `
-                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white mr-2 flex-shrink-0">
-                        <i class="fa fa-comments"></i>
-                    </div>
-                    <div class="bg-white p-3 rounded-lg shadow-sm max-w-[80%]">
-                        <p></p>
-                    </div>
-                `;
-                chatMessages.appendChild(container);
-                return container;
-            }
-
-            // 創建可折疊的資料來源 HTML
-            function createSourcesHtml(sources) {
-                if (!sources || sources.length === 0) return '';
-
-                const sourceId = 'sources-' + Date.now();
-                let html = `
-                    <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(107, 114, 128, 0.3);">
-                        <button onclick="toggleSources('${sourceId}')" style="
-                            display: flex;
-                            align-items: center;
-                            gap: 4px;
-                            background: none;
-                            border: none;
-                            color: #6b7280;
-                            font-size: 12px;
-                            cursor: pointer;
-                            padding: 4px 0;
-                        ">
-                            <svg id="${sourceId}-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="transition: transform 0.2s;">
-                                <polyline points="6 9 12 15 18 9"></polyline>
-                            </svg>
-                            <span>📄 參考來源 (${sources.length})</span>
-                        </button>
-                        <div id="${sourceId}" style="display: none; margin-top: 8px;">
-                `;
-
-                sources.forEach((source, index) => {
-                    const text = source.text || '';
-                    const truncatedText = text.length > 200 ? text.substring(0, 200) + '...' : text;
-                    // 對來源文字套用 Markdown 渲染
-                    const formattedText = formatSourceText(truncatedText);
-                    html += `
-                        <div style="
-                            font-size: 11px;
-                            color: #6b7280;
-                            background: rgba(107, 114, 128, 0.1);
-                            border-radius: 4px;
-                            padding: 8px;
-                            margin-bottom: 6px;
-                        ">
-                            <span style="font-weight: 500; color: #4b5563;">[${index + 1}]</span>
-                            ${formattedText}
-                        </div>
-                    `;
-                });
-
-                html += `
-                        </div>
-                    </div>
-                `;
-
-                return html;
-            }
-
-            // 切換資料來源顯示/隱藏 (設為全域函數)
-            window.toggleSources = function(sourceId) {
-                const sourcesDiv = document.getElementById(sourceId);
-                const icon = document.getElementById(sourceId + '-icon');
-                if (sourcesDiv) {
-                    if (sourcesDiv.style.display === 'none') {
-                        sourcesDiv.style.display = 'block';
-                        if (icon) icon.style.transform = 'rotate(180deg)';
-                    } else {
-                        sourcesDiv.style.display = 'none';
-                        if (icon) icon.style.transform = 'rotate(0deg)';
-                    }
-                }
-            };
-
-            // 格式化來源文字（完整 Markdown 渲染）
-            function formatSourceText(text) {
-                let formatted = text;
-
-                // 移除轉義的反斜線
-                formatted = formatted.replace(/\\#/g, '#');
-                formatted = formatted.replace(/\\\|/g, '|');
-                formatted = formatted.replace(/\\\*\\\*/g, '**');
-                formatted = formatted.replace(/\\\*/g, '*');
-                formatted = formatted.replace(/\\-/g, '-');
-
-                // 處理 Markdown 表格
-                const lines = formatted.split('\n');
-                let inTable = false;
-                let tableHtml = '';
-                let resultLines = [];
-
-                for (let i = 0; i < lines.length; i++) {
-                    const line = lines[i].trim();
-
-                    // 檢測是否為表格分隔行 |---|---|---| 或 |:---|:---:|---:|
-                    // 分隔行：包含 | 和 -，且不含任何字母或中文
-                    const isSeparatorLine = line.includes('|') && line.includes('-') &&
-                        !line.match(/[a-zA-Z\u4e00-\u9fa5\u3000-\u303f\uff00-\uffef0-9]/) &&
-                        line.replace(/[\|\-:\s]/g, '').length === 0;
-
-                    if (isSeparatorLine) {
-                        // 這是分隔行，跳過但標記我們在表格中
-                        if (!inTable) {
-                            inTable = true;
-                            tableHtml = '<table style="font-size: 10px; border-collapse: collapse; margin: 4px 0; width: 100%;">';
-                        }
-                        continue;
-                    }
-
-                    // 檢測表格行（以 | 開頭或包含 | 分隔）
-                    if (line.match(/^\|.*\|$/) || line.match(/^[^|]+\|[^|]+/)) {
-                        if (!inTable) {
-                            inTable = true;
-                            tableHtml = '<table style="font-size: 10px; border-collapse: collapse; margin: 4px 0; width: 100%;">';
-                        }
-                        // 解析表格單元格
-                        const cells = line.split('|').filter(c => c.trim() !== '');
-                        const isHeader = !tableHtml.includes('<tr>');
-                        const tag = isHeader ? 'th' : 'td';
-                        const style = isHeader
-                            ? 'style="border: 1px solid #ddd; padding: 3px; background: #f5f5f5; font-weight: bold; text-align: left;"'
-                            : 'style="border: 1px solid #ddd; padding: 3px; text-align: left;"';
-                        tableHtml += '<tr>' + cells.map(c => `<${tag} ${style}>${c.trim()}</${tag}>`).join('') + '</tr>';
-                    } else {
-                        if (inTable) {
-                            tableHtml += '</table>';
-                            resultLines.push(tableHtml);
-                            tableHtml = '';
-                            inTable = false;
-                        }
-                        resultLines.push(line);
-                    }
-                }
-                if (inTable) {
-                    tableHtml += '</table>';
-                    resultLines.push(tableHtml);
-                }
-                formatted = resultLines.join('\n');
-
-                // 處理標題 #### ### ## #
-                formatted = formatted.replace(/^####\s+(.+)$/gm, '<strong style="font-size: 0.95em;">$1</strong>');
-                formatted = formatted.replace(/^###\s+(.+)$/gm, '<strong style="font-size: 1em;">$1</strong>');
-                formatted = formatted.replace(/^##\s+(.+)$/gm, '<strong style="font-size: 1.05em;">$1</strong>');
-                formatted = formatted.replace(/^#\s+(.+)$/gm, '<strong style="font-size: 1.1em;">$1</strong>');
-
-                // 處理粗體 **text**
-                formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-
-                // 處理連結 [文字](url)
-                formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: #2563eb; text-decoration: underline;">$1</a>');
-
-                // 處理無序列表 * item 或 - item
-                formatted = formatted.replace(/^\*\s+(.+)$/gm, '• $1');
-                formatted = formatted.replace(/^-\s+(.+)$/gm, '• $1');
-
-                // 處理換行
-                formatted = formatted.replace(/\n/g, '<br>');
-
-                return formatted;
-            }
-
-            // 格式化機器人消息（支持 Markdown 格式）
-            function formatBotMessage(text) {
-                let formatted = text;
-
-                // 移除回答中的「資料來源」引用文字（因為已有獨立的參考來源區塊）
-                // 匹配格式: *(資料來源：...)* 或 （資料來源：...） 或 (資料來源：...)
-                formatted = formatted.replace(/\*?\(資料來源[：:][^)]*\)\*?/g, '');
-                formatted = formatted.replace(/（資料來源[：:][^）]*）/g, '');
-                // 清理可能殘留的空白行
-                formatted = formatted.replace(/\n\s*\n\s*\n/g, '\n\n');
-
-                // 先處理轉義的星號 \*\* 或 \*（來自 RAG 資料）
-                formatted = formatted.replace(/\\\*\\\*/g, '**');
-                formatted = formatted.replace(/\\\*/g, '*');
-
-                // 處理粗體 **text** 或 __text__
-                formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-                formatted = formatted.replace(/__([^_]+)__/g, '<strong>$1</strong>');
-
-                // 移除斜體處理 - 避免單獨 * 符號被誤判（如列表項目）
-                // 如需斜體，建議使用 _text_ 格式
-
-                // 處理 Markdown 連結 [文字](url)
-                formatted = formatted.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" style="color: #2563eb; text-decoration: underline;">$1</a>');
-
-                // 處理無序列表項 * item 或 - item（行首）
-                formatted = formatted.replace(/^[\*\-]\s+(.+)$/gm, '<li style="margin-left: 1.5em; list-style-type: disc;">$1</li>');
-
-                // 處理標題 ## 或 ### 等
-                formatted = formatted.replace(/^###\s+(.+)$/gm, '<h4 style="font-weight: bold; font-size: 1em; margin: 0.5em 0;">$1</h4>');
-                formatted = formatted.replace(/^##\s+(.+)$/gm, '<h3 style="font-weight: bold; font-size: 1.1em; margin: 0.5em 0;">$1</h3>');
-                formatted = formatted.replace(/^#\s+(.+)$/gm, '<h2 style="font-weight: bold; font-size: 1.2em; margin: 0.5em 0;">$1</h2>');
-
-                // 將連續的 <li> 包裝成 <ul>
-                formatted = formatted.replace(/(<li[^>]*>.*?<\/li>\n?)+/g, function(match) {
-                    return '<ul style="margin: 0.5em 0; padding-left: 0;">' + match + '</ul>';
-                });
-
-                // 將換行符轉換為 <br>（在列表外）
-                formatted = formatted.replace(/\n/g, '<br>');
-
-                // 清理多餘的 <br> 在 <ul> 和 <li> 周圍
-                formatted = formatted.replace(/<br>\s*<ul/g, '<ul');
-                formatted = formatted.replace(/<\/ul>\s*<br>/g, '</ul>');
-                formatted = formatted.replace(/<br>\s*<li/g, '<li');
-                formatted = formatted.replace(/<\/li>\s*<br>/g, '</li>');
-                formatted = formatted.replace(/<br>\s*<h/g, '<h');
-                formatted = formatted.replace(/<\/h[234]>\s*<br>/g, function(match) {
-                    return match.replace('<br>', '');
-                });
-
-                return formatted;
-            }
-            
-            sendMessage.addEventListener('click', sendChatMessage);
-            
-            chatInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    sendChatMessage();
-                }
-            });
-            
-            // 添加使用者消息到聊天視窗
-            function addUserMessage(message) {
-                const messageElement = document.createElement('div');
-                messageElement.className = 'flex mb-4 justify-end';
-                messageElement.innerHTML = `
-                    <div class="bg-primary text-white p-3 rounded-lg shadow-sm max-w-[80%]">
-                        <p>${message}</p>
-                    </div>
-                    <div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center ml-2 flex-shrink-0">
-                        <i class="fa fa-user"></i>
-                    </div>
-                `;
-                chatMessages.appendChild(messageElement);
-                
-                // 滾動到底部
-                chatMessages.scrollTop = chatMessages.scrollHeight;
-            }
-            
-            // 添加機器人消息到聊天視窗
-            function addBotMessage(message) {
-                const messageElement = document.createElement('div');
-                messageElement.className = 'flex mb-4';
-                messageElement.innerHTML = `
-                    <div class="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-white mr-2 flex-shrink-0">
-                        <i class="fa fa-comments"></i>
-                    </div>
-                    <div class="bg-white p-3 rounded-lg shadow-sm max-w-[80%]">
-                        <p>${message}</p>
-                    </div>
-                `;
-                chatMessages.appendChild(messageElement);
-            }
         });
     </script>
 </body>
