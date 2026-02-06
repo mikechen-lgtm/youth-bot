@@ -143,8 +143,10 @@ export class ChatAPI {
             } else if (data.type === "sources") {
               onSources?.(data.content as SourceItem[]);
             } else if (data.type === "end") {
-              onComplete?.(fullMessage);
-              return fullMessage;
+              // 伺服器在 end 事件中帶回格式化後的完整文字，優先使用
+              const finalMessage = (data.content as string) || fullMessage;
+              onComplete?.(finalMessage);
+              return finalMessage;
             } else if (data.type === "error") {
               onError?.(data.content as string);
               throw new Error(data.content as string);

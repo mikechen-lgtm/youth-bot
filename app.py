@@ -111,8 +111,16 @@ app = Flask(__name__, static_url_path=ASSET_ROUTE_PREFIX, static_folder=ASSET_LO
 
 # Session configuration for OAuth
 app.secret_key = os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32))
+
+# Determine if running in production environment
+is_production = (
+    os.getenv("FLASK_ENV") == "production" or
+    bool(os.getenv("VERCEL")) or
+    bool(os.getenv("VERCEL_ENV"))
+)
+
 app.config.update(
-    SESSION_COOKIE_SECURE=bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV")),
+    SESSION_COOKIE_SECURE=is_production,  # True in production, False in dev
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE='Lax',  # Lax allows OAuth redirects while still preventing CSRF
     PERMANENT_SESSION_LIFETIME=86400,  # 24 hours
@@ -122,11 +130,51 @@ app.config.update(
 configure_logging(app)
 logger = logging.getLogger(__name__)
 
+# Log session security configuration
+logging.info(f"Session security: SECURE={is_production}, ENV={os.getenv('FLASK_ENV', 'development')}")
+
+# Configure CORS with security best practices
+def get_allowed_origins():
+    """
+    Get allowed CORS origins from environment variable.
+    Supports comma-separated multiple origins.
+    """
+    origins_str = os.getenv("FRONTEND_ORIGIN")
+
+    # If not set, use environment-specific defaults
+    if not origins_str:
+        env = os.getenv("FLASK_ENV", "development")
+        if env == "production":
+            # Production MUST have explicit FRONTEND_ORIGIN
+            raise ValueError(
+                "⚠️  FRONTEND_ORIGIN 環境變數未設定！\n"
+                "生產環境必須明確指定允許的前端來源。\n"
+                "範例：FRONTEND_ORIGIN=https://youthafterwork.com"
+            )
+        # Development default
+        return ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"]
+
+    # Parse comma-separated origins
+    origins = [origin.strip() for origin in origins_str.split(",") if origin.strip()]
+
+    # Validate origin format
+    for origin in origins:
+        if not origin.startswith(("http://", "https://")):
+            raise ValueError(f"無效的 CORS 來源格式: {origin}")
+
+    return origins
+
+
+ALLOWED_ORIGINS = get_allowed_origins()
+
 CORS(
     app,
-    resources={r"/api/*": {"origins": os.getenv("FRONTEND_ORIGIN", "*")}},
+    resources={r"/api/*": {"origins": ALLOWED_ORIGINS}},
     supports_credentials=True,
 )
+
+# Log allowed origins for debugging
+logging.info(f"CORS 允許的來源: {ALLOWED_ORIGINS}")
 
 # Initialize CSRF Protection
 app.csrf_protection = CSRFProtection(app.secret_key)
@@ -135,11 +183,7 @@ app.csrf_protection = CSRFProtection(app.secret_key)
 limiter = create_limiter(app)
 
 # Configure security headers
-def is_production_environment() -> bool:
-    """Check if running in a production environment."""
-    return os.getenv('FLASK_ENV') == 'production' or bool(os.getenv("VERCEL") or os.getenv("VERCEL_ENV"))
-
-configure_security_headers(app, is_production=is_production_environment())
+configure_security_headers(app, is_production=is_production)
 
 # OAuth Configuration
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -253,55 +297,55 @@ def _build_system_prompt() -> str:
 
 ## 工具調用規則
 
-### 查詢近期/最近活動
-用戶問「最近有什麼活動」「近期活動」「接下來有什麼」時：
-- 調用 `get_recent_activities(days_ahead=90, limit=20)`
-- 工具自動：獲取當前時間 → 計算時間範圍 → 查詢資料庫 → 過濾未來活動
-- 直接使用返回的活動列表回答
+**查詢近期活動**：用戶問「最近」「近期」「接下來」有什麼活動
+→ 調用 `get_recent_activities(days_ahead=90, limit=20)`
 
-### 查詢過去活動
-用戶問「過去有什麼」「之前辦過什麼」時：
-- 調用 `get_past_activities(days_back=30, limit=20)`
-- 工具自動：獲取當前時間 → 計算時間範圍 → 查詢資料庫 → 過濾過去活動
-- 直接使用返回的活動列表回答
+**查詢過去活動**：用戶問「過去」「之前」辦過什麼
+→ 調用 `get_past_activities(days_back=30, limit=20)`
 
-### 調整查詢範圍
-- 查詢更長時間：`get_recent_activities(days_ahead=180)` （未來 6 個月）
-- 查詢更短時間：`get_recent_activities(days_ahead=30)` （未來 1 個月）
-- 查詢更多結果：`get_recent_activities(limit=50)`
+**調整範圍**：可調整 days_ahead、days_back、limit 參數
 
-## 🔴 日期格式規則（嚴格遵守）
+## 🔴 活動回答格式規則（固定輸出格式，嚴格遵守）
 
-**工具返回的日期格式**：
-- 活動日期：`2026/01/21 13:59` （YYYY/MM/DD HH:MM）
-- 時間範圍：`2026/01/28 到 2026/04/28`
+**整體格式規則**：
+1. 數字與活動名稱必須在同一行
+2. 活動日期必須獨立成一行，緊接在活動名稱下一行
+3. 報名網址必須獨立成一行，緊接在活動日期下一行（從內容中提取，若無則省略此行）
+4. 貼文連結必須獨立成一行，提供粉絲專頁的貼文連結供了解更多
 
-**回答時的強制要求**：
-1. **必須**保持工具返回的原始格式
-2. **嚴禁**轉換為其他格式（如：09月14日、1月21日）
-3. **必須**包含完整年份（YYYY）
+**活動日期顯示規則**：
+- 從活動內容中提取實際活動日期（非發布日期）
+- 單日活動：YYYY/MM/DD
+- 多日活動（連續）：YYYY/MM/DD–MM/DD
+- 多日活動（不連續）：YYYY/MM/DD、YYYY/MM/DD
+- 僅提供月份：YYYY/MM
+- 未提供日期資訊：日期未公告
+- 民國年轉換：115年 = 2026年
 
-❌ 錯誤範例：「09月14日（日）」「1月21日」
-✅ 正確範例：「2026/09/14」「2026/01/21 13:59」
-
-## 無活動時的處理（重要）
-
-**當工具返回 `total_count: 0` 時**：
-1. ✅ 直接告知用戶「目前沒有活動」
-2. ❌ **絕對不要**嘗試使用 RAG 或 File Search
-3. ❌ **絕對不要**回答知識庫中的舊活動
-
-**標準回覆**：
+**指定輸出格式（請完全仿照）**：
 ```
-目前沒有查詢到即將舉辦的活動。
+1. 活動名稱：青年創業講座
+   活動日期：2026/01/21
+   報名網址：https://reurl.cc/example
+   貼文連結：https://www.facebook.com/youth.tycg.gov.tw/posts/123
 
-建議追蹤官方粉專取得最新資訊：
-- 桃園青創事 Facebook
-- 桃園市政府青年事務局 Facebook
-  https://www.facebook.com/youth.tycg.gov.tw
-
-或聯繫：總機 (03) 422-5205 / 市政專線 1999
+2. 活動名稱：職涯探索工作坊
+   活動日期：2026/02/15–02/16
+   貼文連結：https://www.facebook.com/TaoyuanYS/posts/456
 ```
+
+**要求**：
+- 編號與「活動名稱：」之間用半形句號加空格分隔
+- 活動日期、報名網址、貼文連結前方縮排 3 個半形空格
+- 報名網址從活動內容中提取（含 reurl.cc、forms.gle、google.com/forms 等），找不到則省略此行
+- 貼文連結使用工具返回的 url 欄位
+- 活動間用空行分隔
+- 不使用粗體（**）、不使用 emoji
+
+## 無活動時的處理
+
+工具返回 `total_count: 0` 時，告知「目前沒有活動」並建議追蹤官方粉專或撥打 1999。
+**禁止**使用 RAG 或知識庫回答舊活動。
 
 ---
 
@@ -340,15 +384,16 @@ A: 青年局有三種創業資源：青創基地、青創資源中心、資金�
 Q: 最近有什麼活動？
 A: 近期有以下活動：
 
-1. 青年創業講座
-   時間：2026/01/21 14:00
-   主辦：桃園市政府青年事務局
+1. 活動名稱：青年創業講座
+   活動日期：2026/01/21
+   報名網址：https://reurl.cc/example
+   貼文連結：https://www.facebook.com/youth.tycg.gov.tw/posts/123
 
-2. 職涯探索工作坊
-   時間：2026/02/15 10:00
-   主辦：桃園青創事
+2. 活動名稱：職涯探索工作坊
+   活動日期：2026/02/15–02/16
+   貼文連結：https://www.facebook.com/TaoyuanYS/posts/456
 
-詳細資訊可以到官方粉專查看。'''
+想了解更多可以點擊貼文連結查看詳情。'''
 
 
 SYSTEM_PROMPT = _build_system_prompt()
@@ -421,7 +466,6 @@ def ensure_mysql_schema() -> None:
                     logger.info("Column member_id or constraint already exists, skipping")
                 else:
                     logger.error(f"Failed to add member_id column: {e}")
-                    raise
                     raise
 
             # Add index on member_id for performance (if not exists)
@@ -615,6 +659,12 @@ def admin_login():
     password = data.get("password") or ""
 
     if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+        # Regenerate session ID to prevent session fixation attack
+        old_session_data = dict(session)
+        session.clear()
+        session.modified = True
+
+        # Set admin session with new session ID
         session["is_admin"] = True
         session.permanent = True
         # Generate new CSRF token after successful login
@@ -981,40 +1031,47 @@ def admin_reorder_hero_images():
 @admin_required
 @csrf_protect
 def admin_update_hero_image(image_id: int):
-    """Update hero image metadata."""
+    """Update hero image metadata.
+
+    Security: Uses field mapping dictionary to prevent SQL injection.
+    All field names are predefined and never constructed from user input.
+    """
     data = request.get_json() or {}
 
-    # Whitelist of allowed fields to prevent SQL injection
-    ALLOWED_FIELDS = {"alt_text", "is_active", "link_url"}
+    # Field mapping dictionary: defines allowed fields and their SQL fragments
+    # This eliminates the need for string concatenation in SQL construction
+    FIELD_MAPPING = {
+        'alt_text': 'alt_text = :alt_text',
+        'is_active': 'is_active = :is_active',
+        'link_url': 'link_url = :link_url',
+    }
 
     updates = []
     params = {"id": image_id, "now": utcnow()}
 
-    # Validate only allowed fields are being updated
-    invalid_fields = set(data.keys()) - ALLOWED_FIELDS
-    if invalid_fields:
-        return jsonify({
-            "success": False,
-            "error": f"不允許更新的欄位: {', '.join(invalid_fields)}"
-        }), 400
+    # Validate and build update statements
+    for field, value in data.items():
+        # Reject any fields not in the mapping
+        if field not in FIELD_MAPPING:
+            return jsonify({
+                "success": False,
+                "error": f"不允許更新的欄位: {field}"
+            }), 400
 
-    if "alt_text" in data:
-        updates.append("alt_text = :alt_text")
-        params["alt_text"] = data["alt_text"]
+        # Field-specific validation and processing
+        if field == "is_active":
+            params[field] = 1 if value else 0
+        elif field == "link_url":
+            # Validate URL
+            is_valid, error_msg = validate_url(value)
+            if not is_valid:
+                return jsonify({"success": False, "error": error_msg}), 400
+            params[field] = value.strip() if value else None
+        else:
+            params[field] = value
 
-    if "is_active" in data:
-        updates.append("is_active = :is_active")
-        params["is_active"] = 1 if data["is_active"] else 0
-
-    if "link_url" in data:
-        link_url = data["link_url"]
-        # 驗證 URL
-        is_valid, error_msg = validate_url(link_url)
-        if not is_valid:
-            return jsonify({"success": False, "error": error_msg}), 400
-
-        updates.append("link_url = :link_url")
-        params["link_url"] = link_url.strip() if link_url else None
+        # Use predefined SQL fragment from mapping
+        updates.append(FIELD_MAPPING[field])
 
     if not updates:
         return jsonify({"success": False, "error": "沒有要更新的欄位"}), 400
@@ -1022,13 +1079,11 @@ def admin_update_hero_image(image_id: int):
     # Always update timestamp
     updates.append("updated_at = :now")
 
-    # Use explicit field mapping instead of dynamic SQL construction
-    # This is safe because updates only contains hardcoded field assignments
+    # Build and execute SQL - safe because all field names come from FIELD_MAPPING
+    sql = "UPDATE hero_carousel SET " + ", ".join(updates) + " WHERE id = :id"
+
     with mysql_engine.begin() as conn:
-        result = conn.execute(
-            text(f"UPDATE hero_carousel SET {', '.join(updates)} WHERE id = :id"),
-            params
-        )
+        result = conn.execute(text(sql), params)
 
         if result.rowcount == 0:
             return jsonify({"success": False, "error": "圖片不存在"}), 404
@@ -1133,10 +1188,107 @@ def format_sse(payload: Dict[str, Any]) -> str:
 # Regex pattern to remove OpenAI file search citation markers (e.g., fileciteturn0file5turn0file12)
 _CITATION_PATTERN = re.compile(r"fileciteturn\d+file\d+(?:turn\d+file\d+)*")
 
+# Pre-compiled emoji pattern: matches emoji ranges while preserving CJK characters (U+2E80-U+9FFF)
+_EMOJI_PATTERN = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"  # emoticons
+    "\U0001F300-\U0001F5FF"  # symbols & pictographs
+    "\U0001F680-\U0001F6FF"  # transport & map
+    "\U0001F1E0-\U0001F1FF"  # flags
+    "\U0001F900-\U0001F9FF"  # supplemental symbols
+    "\U0001FA00-\U0001FA6F"  # chess symbols
+    "\U0001FA70-\U0001FAFF"  # symbols extended-A
+    "\U0000FE00-\U0000FE0F"  # variation selectors
+    "\U0000200D"             # zero width joiner
+    "\U00002B50"             # star
+    "\U000024C2-\U000024FF"  # enclosed alphanumerics (narrow)
+    "\U00002702-\U000027B0"  # dingbats
+    "\U00002600-\U000026FF"  # misc symbols
+    "]+",
+    flags=re.UNICODE,
+)
+
+_MULTI_SPACE_PATTERN = re.compile(r'  +')
+
 
 def strip_citations(text: str) -> str:
     """Remove OpenAI file search citation markers from text."""
     return _CITATION_PATTERN.sub("", text)
+
+
+def _strip_emojis(text: str) -> str:
+    """移除文字中的 emoji 和表情符號，保留中文字元"""
+    result = _EMOJI_PATTERN.sub("", text)
+    return _MULTI_SPACE_PATTERN.sub(" ", result).strip()
+
+
+def fix_activity_list_format(text: str) -> str:
+    """
+    修正活動列表格式，確保編號和活動名稱在同一行。
+
+    處理以下情況：
+    1. 編號和活動名稱分行 → 合併到同一行
+    2. 移除不必要的粗體標記（新格式不使用粗體）
+    3. 移除活動名稱中的 emoji
+    """
+    lines = text.split('\n')
+    result_lines = []
+    i = 0
+
+    while i < len(lines):
+        line = lines[i].strip()
+
+        # 模式 1：編號獨佔一行（可能帶粗體或「活動名稱：」）
+        # 匹配：1. 或 **1.** 或 1. 活動名稱：（後面沒有實際標題）
+        number_only = re.match(r'^(?:\*\*)?(\d+)\.(?:\*\*)?\s*(?:活動名稱：)?\s*$', line)
+        if number_only and i + 1 < len(lines):
+            number = number_only.group(1)
+            next_line = lines[i + 1].strip()
+            # 移除下一行的粗體標記和「活動名稱：」前綴
+            next_line = re.sub(r'^\*\*|\*\*$', '', next_line).strip()
+            next_line = re.sub(r'^活動名稱[：:]', '', next_line).strip()
+            next_line = _strip_emojis(next_line)
+            if next_line:
+                result_lines.append(f'{number}. 活動名稱：{next_line}')
+                i += 2
+                continue
+
+        # 模式 2：有編號+標題但使用粗體格式 → 移除粗體，改為新格式
+        # **1. 標題** 或 **1. 活動名稱：標題**
+        bold_pattern = re.match(r'^\*\*(\d+)\.\s*(?:活動名稱[：:])?\s*(.+?)\*\*$', line)
+        if bold_pattern:
+            number = bold_pattern.group(1)
+            title = _strip_emojis(bold_pattern.group(2).strip())
+            result_lines.append(f'{number}. 活動名稱：{title}')
+            i += 1
+            continue
+
+        # 模式 3：有編號+標題但沒有「活動名稱：」前綴
+        # 1. 青年創業講座（不帶粗體）
+        plain_pattern = re.match(r'^(\d+)\.\s+(?!活動[名日]|報名|貼文)(.+)$', line)
+        if plain_pattern:
+            number = plain_pattern.group(1)
+            title = plain_pattern.group(2).strip()
+            title = re.sub(r'^\*\*|\*\*$', '', title).strip()
+            title = _strip_emojis(title)
+            result_lines.append(f'{number}. 活動名稱：{title}')
+            i += 1
+            continue
+
+        # 模式 4：已有「活動名稱：」格式但含有 emoji
+        name_pattern = re.match(r'^(\d+)\.\s*活動名稱[：:]\s*(.+)$', line)
+        if name_pattern:
+            number = name_pattern.group(1)
+            title = _strip_emojis(name_pattern.group(2).strip())
+            result_lines.append(f'{number}. 活動名稱：{title}')
+            i += 1
+            continue
+
+        # 其他行保持不變
+        result_lines.append(lines[i])
+        i += 1
+
+    return '\n'.join(result_lines)
 
 
 @app.post("/api/chat")
@@ -1252,10 +1404,13 @@ def api_chat():
 
         full_text = "".join(accumulated).strip()
 
+        # 修正活動列表格式（確保編號和標題在同一行且使用粗體）
         if full_text:
+            full_text = fix_activity_list_format(full_text)
             save_chat_message(session_id, "assistant", full_text)
         else:
             fallback_text = "抱歉，我目前無法回覆。請重新描述您的問題或聯繫我們的服務人員。"
+            full_text = fallback_text
             save_chat_message(session_id, "assistant", fallback_text)
             yield format_sse(
                 {"type": "text", "content": fallback_text, "session_id": session_id}
@@ -1267,7 +1422,8 @@ def api_chat():
                 {"type": "sources", "content": sources, "session_id": session_id}
             )
 
-        yield format_sse({"type": "end", "content": "", "session_id": session_id})
+        # 送出格式化後的完整文字，讓前端替換串流累積的未格式化版本
+        yield format_sse({"type": "end", "content": full_text, "session_id": session_id})
 
     response = Response(
         stream_with_context(generate()),
@@ -1630,6 +1786,10 @@ def auth_google_callback():
             source="google"
         )
 
+        # Regenerate session ID to prevent session fixation attack
+        session.clear()
+        session.modified = True
+
         session["user"] = {
             "member_id": member_id,
             "provider": "google",
@@ -1700,8 +1860,9 @@ def auth_line_callback():
             source="line"
         )
 
-        # 清除舊的 session 資料，確保乾淨的登入狀態
+        # Regenerate session ID to prevent session fixation attack
         session.clear()
+        session.modified = True
 
         session["user"] = {
             "member_id": member_id,
@@ -1780,6 +1941,10 @@ def auth_facebook_callback():
             source="facebook"
         )
 
+        # Regenerate session ID to prevent session fixation attack
+        session.clear()
+        session.modified = True
+
         session["user"] = {
             "member_id": member_id,
             "provider": "facebook",
@@ -1798,7 +1963,11 @@ def auth_facebook_callback():
 
 @app.get("/api/user")
 def api_get_user():
-    """Return current authenticated user or 401."""
+    """Return current authenticated user or guest status.
+
+    Returns 200 with success=false for unauthenticated users to avoid
+    console warnings while maintaining clear authentication state.
+    """
     # Debug: 記錄 session 資訊
     from flask import request as flask_request
     logger.info(f"[/api/user] Session ID cookie: {flask_request.cookies.get('session', 'N/A')[:20] if flask_request.cookies.get('session') else 'None'}...")
@@ -1818,11 +1987,12 @@ def api_get_user():
             "user": user_data
         })
         return _no_store(response)
+    # Return 200 with success=false for unauthenticated users
+    # This avoids console warnings while clearly indicating no user is logged in
     response = jsonify({
         "success": False,
         "message": "Not authenticated"
     })
-    response.status_code = 401
     return _no_store(response)
 
 

@@ -46,6 +46,13 @@ if DATABASE_TOOLS_AVAILABLE:
 OPENAI_CLIENT: Optional[OpenAI] = None
 _vector_store_id: Optional[str] = None
 
+# 關鍵字預過濾：只有涉及活動查詢的訊息才進入 Phase 1 function calling
+_ACTIVITY_KEYWORDS = (
+    "活動", "近期", "最近", "接下來", "有什麼", "有哪些",
+    "過去", "之前", "辦過", "舉辦", "報名", "講座", "工作坊",
+    "課程", "研習", "競賽", "比賽", "徵件", "招募",
+)
+
 load_dotenv()
 
 _OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -316,7 +323,7 @@ def _process_function_calls(
         messages=messages,
         tools=ALL_TOOLS_DEFINITIONS if ALL_TOOLS_DEFINITIONS else TIME_TOOLS_DEFINITIONS,
         tool_choice="auto",
-        max_tokens=50,
+        max_tokens=200,
         temperature=0.3,
     )
 
@@ -383,47 +390,75 @@ def _clean_messages_for_responses_api(messages: List[Dict[str, Any]]) -> List[Di
     - tool_calls 字段
     - role="tool" 的消息
 
-    此函數將 function calling 的結果合併到 assistant 消息中
+    此函數將 function calling 的結果合併到 assistant 消息中，
+    確保資料庫查詢結果能傳遞到 Phase 2（RAG streaming）。
     """
     cleaned = []
+    tool_results = []
 
     for msg in messages:
         role = msg.get("role")
 
-        # 過濾掉 tool 角色的消息
+        # 收集 tool 結果
         if role == "tool":
+            tool_results.append(msg.get("content", ""))
             continue
 
-        # 處理包含 tool_calls 的 assistant 消息
+        # 跳過包含 tool_calls 的 assistant 消息，tool 結果會在後面合併
         if role == "assistant" and "tool_calls" in msg:
-            # 移除 tool_calls，只保留 content
-            cleaned_msg = {
+            continue
+
+        # 如果有累積的 tool 結果，先插入為 assistant 消息
+        if tool_results:
+            merged_content = "\n\n".join(tool_results)
+            cleaned.append({
                 "role": "assistant",
-                "content": msg.get("content") or "",
-            }
-            cleaned.append(cleaned_msg)
-        else:
-            # 保留其他消息
-            cleaned.append(msg)
+                "content": f"[資料庫查詢結果]\n{merged_content}",
+            })
+            tool_results = []
+
+        cleaned.append(msg)
+
+    # 如果最後還有未處理的 tool 結果
+    if tool_results:
+        merged_content = "\n\n".join(tool_results)
+        cleaned.append({
+            "role": "assistant",
+            "content": f"[資料庫查詢結果]\n{merged_content}",
+        })
 
     return cleaned
+
+
+def _has_tool_results(messages: List[Dict[str, Any]]) -> bool:
+    """檢查 messages 中是否有資料庫工具的查詢結果"""
+    return any(msg.get("role") == "tool" for msg in messages)
 
 
 def _stream_rag_response(
     messages: List[Dict[str, Any]],
     resolved_model: str,
     vector_store_id: str,
+    skip_file_search: bool = False,
 ) -> Generator[Dict[str, Any], None, None]:
-    """執行 RAG streaming 生成"""
+    """執行 RAG streaming 生成
+
+    Args:
+        skip_file_search: 若為 True，不掛載 file_search 工具（用於已有資料庫結果時）
+    """
     # 清理 messages 以兼容 Responses API
     cleaned_messages = _clean_messages_for_responses_api(messages)
 
-    with OPENAI_CLIENT.responses.stream(
-        model=resolved_model,
-        input=cleaned_messages,
-        tools=[{"type": "file_search", "vector_store_ids": [vector_store_id]}],
-        include=["file_search_call.results"],
-    ) as stream:
+    # 已有資料庫結果時不搜 RAG，避免舊資料干擾
+    stream_kwargs: Dict[str, Any] = {
+        "model": resolved_model,
+        "input": cleaned_messages,
+    }
+    if not skip_file_search:
+        stream_kwargs["tools"] = [{"type": "file_search", "vector_store_ids": [vector_store_id]}]
+        stream_kwargs["include"] = ["file_search_call.results"]
+
+    with OPENAI_CLIENT.responses.stream(**stream_kwargs) as stream:
         for event in stream:
             if _get_attr_or_key(event, "type") == "response.output_text.delta":
                 delta = _get_attr_or_key(event, "delta")
@@ -432,7 +467,7 @@ def _stream_rag_response(
 
         response = stream.get_final_response()
 
-    if response:
+    if response and not skip_file_search:
         sources = _extract_sources(response)
         if sources:
             yield {"type": "sources", "content": sources}
@@ -465,10 +500,13 @@ def generate_with_rag_stream(
     messages = _build_input(system_prompt, chat_history, query)
     resolved_model = _resolve_model(model)
 
-    # 階段1：Function Calling（如果啟用且時間工具可用）
+    # 階段1：Function Calling（僅在查詢可能涉及活動時觸發）
     enable_function_calling = os.getenv("ENABLE_FUNCTION_CALLING", "true").lower() == "true"
+    has_db_results = False
 
-    if enable_function_calling and TIME_TOOLS_AVAILABLE:
+    query_may_need_tools = any(kw in query for kw in _ACTIVITY_KEYWORDS)
+
+    if enable_function_calling and query_may_need_tools and (DATABASE_TOOLS_AVAILABLE or TIME_TOOLS_AVAILABLE):
         try:
             logger.info("階段1：檢查 function calling 需求")
             fc_generator = _process_function_calls(messages, resolved_model)
@@ -481,12 +519,16 @@ def generate_with_rag_stream(
             except StopIteration as e:
                 messages = e.value if e.value else messages
 
+            # 檢查是否有資料庫工具結果
+            has_db_results = _has_tool_results(messages)
+
         except Exception as e:
             logger.warning("Function calling 失敗，回退到標準模式: %s", e)
 
-    # 階段2：RAG Streaming
-    logger.info("階段2：開始 streaming 生成")
-    yield from _stream_rag_response(messages, resolved_model, vector_store_id)
+    # 階段2：Streaming 生成（有資料庫結果時跳過 RAG file_search）
+    mode = "資料庫結果（跳過 RAG file_search）" if has_db_results else "RAG file_search"
+    logger.info("階段2：使用%s生成", mode)
+    yield from _stream_rag_response(messages, resolved_model, vector_store_id, skip_file_search=has_db_results)
 
 
 def generate_with_rag(

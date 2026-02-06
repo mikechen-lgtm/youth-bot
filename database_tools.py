@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import os
 from datetime import datetime, timedelta
@@ -38,30 +39,43 @@ def _build_mysql_url() -> str:
     return f"mysql+pymysql://{user}:{password}@{host}:{port}/{database}"
 
 
-def _create_engine() -> Engine:
-    """創建 SQLAlchemy engine"""
-    mysql_url = _build_mysql_url()
-    return create_engine(
-        mysql_url,
-        pool_pre_ping=True,
-        pool_size=5,
-        max_overflow=10,
-        pool_recycle=3600,
-        connect_args={"charset": "utf8mb4"},
-    )
+_engine: Optional[Engine] = None
+
+
+def _get_engine() -> Engine:
+    """取得全域 SQLAlchemy engine（singleton）"""
+    global _engine
+    if _engine is None:
+        mysql_url = _build_mysql_url()
+        _engine = create_engine(
+            mysql_url,
+            pool_pre_ping=True,
+            pool_size=5,
+            max_overflow=10,
+            pool_recycle=3600,
+            connect_args={"charset": "utf8mb4"},
+        )
+    return _engine
+
+
+def _today_start() -> datetime:
+    """取得今天 00:00（台北時區），作為過去/未來活動的分界點"""
+    now = datetime.now(TAIPEI_TZ)
+    return now.replace(hour=0, minute=0, second=0, microsecond=0)
 
 
 def _format_activity_result(row) -> Dict[str, Any]:
     """格式化單筆活動資料"""
-    import json
+    # 優先使用 event_date，若無則使用 publish_date
+    effective_date = row[4] if row[4] else row[3]
 
     return {
         "source": row[0],
         "title": row[1],
-        "content": row[2][:200] + "..." if row[2] and len(row[2]) > 200 else row[2],  # 限制內容長度
-        "publish_date": row[3].strftime("%Y/%m/%d %H:%M") if row[3] else None,
-        "url": row[4],
-        "tags": json.loads(row[5]) if row[5] else [],
+        "content": row[2][:500] + "..." if row[2] and len(row[2]) > 500 else row[2],
+        "publish_date": effective_date.strftime("%Y/%m/%d %H:%M") if effective_date else None,
+        "url": row[5],
+        "tags": json.loads(row[6]) if row[6] else [],
     }
 
 
@@ -77,9 +91,9 @@ def get_past_activities(days_back: int = 30, limit: int = 20) -> Dict[str, Any]:
         包含活動列表、統計資訊的字典
     """
     try:
-        engine = _create_engine()
-        now = datetime.now(TAIPEI_TZ)
-        start_date = now - timedelta(days=days_back)
+        engine = _get_engine()
+        today = _today_start()
+        start_date = today - timedelta(days=days_back)
 
         query = text("""
             SELECT
@@ -87,12 +101,13 @@ def get_past_activities(days_back: int = 30, limit: int = 20) -> Dict[str, Any]:
                 title,
                 content,
                 publish_date,
+                event_date,
                 url,
                 tags
             FROM fb_activities
-            WHERE publish_date < :now
-              AND publish_date >= :start_date
-            ORDER BY publish_date DESC
+            WHERE COALESCE(event_date, publish_date) < :today_start
+              AND COALESCE(event_date, publish_date) >= :start_date
+            ORDER BY COALESCE(event_date, publish_date) DESC
             LIMIT :limit
         """)
 
@@ -100,9 +115,9 @@ def get_past_activities(days_back: int = 30, limit: int = 20) -> Dict[str, Any]:
             result = conn.execute(
                 query,
                 {
-                    "now": now,
+                    "today_start": today,
                     "start_date": start_date,
-                    "limit": limit
+                    "limit": limit,
                 }
             )
             rows = result.fetchall()
@@ -114,15 +129,15 @@ def get_past_activities(days_back: int = 30, limit: int = 20) -> Dict[str, Any]:
             "query_type": "past_activities",
             "time_range": {
                 "from": start_date.strftime("%Y/%m/%d"),
-                "to": now.strftime("%Y/%m/%d"),
-                "description": f"{start_date.strftime('%Y/%m/%d')} 到 {now.strftime('%Y/%m/%d')}（過去 {days_back} 天）"
+                "to": today.strftime("%Y/%m/%d"),
+                "description": f"{start_date.strftime('%Y/%m/%d')} 到 {today.strftime('%Y/%m/%d')}（過去 {days_back} 天）"
             },
             "total_count": len(activities),
             "activities": activities,
         }
 
     except Exception as e:
-        logger.error(f"查詢過去活動失敗: {e}")
+        logger.error("查詢過去活動失敗: %s", e)
         return {
             "success": False,
             "error": str(e),
@@ -142,9 +157,9 @@ def get_recent_activities(days_ahead: int = 90, limit: int = 20) -> Dict[str, An
         包含活動列表、統計資訊的字典
     """
     try:
-        engine = _create_engine()
-        now = datetime.now(TAIPEI_TZ)
-        end_date = now + timedelta(days=days_ahead)
+        engine = _get_engine()
+        today = _today_start()
+        end_date = today + timedelta(days=days_ahead)
 
         query = text("""
             SELECT
@@ -152,12 +167,13 @@ def get_recent_activities(days_ahead: int = 90, limit: int = 20) -> Dict[str, An
                 title,
                 content,
                 publish_date,
+                event_date,
                 url,
                 tags
             FROM fb_activities
-            WHERE publish_date >= :now
-              AND publish_date <= :end_date
-            ORDER BY publish_date ASC
+            WHERE COALESCE(event_date, publish_date) >= :today_start
+              AND COALESCE(event_date, publish_date) <= :end_date
+            ORDER BY COALESCE(event_date, publish_date) ASC
             LIMIT :limit
         """)
 
@@ -165,9 +181,9 @@ def get_recent_activities(days_ahead: int = 90, limit: int = 20) -> Dict[str, An
             result = conn.execute(
                 query,
                 {
-                    "now": now,
+                    "today_start": today,
                     "end_date": end_date,
-                    "limit": limit
+                    "limit": limit,
                 }
             )
             rows = result.fetchall()
@@ -178,16 +194,16 @@ def get_recent_activities(days_ahead: int = 90, limit: int = 20) -> Dict[str, An
             "success": True,
             "query_type": "recent_activities",
             "time_range": {
-                "from": now.strftime("%Y/%m/%d"),
+                "from": today.strftime("%Y/%m/%d"),
                 "to": end_date.strftime("%Y/%m/%d"),
-                "description": f"{now.strftime('%Y/%m/%d')} 到 {end_date.strftime('%Y/%m/%d')}（未來 {days_ahead} 天）"
+                "description": f"{today.strftime('%Y/%m/%d')} 到 {end_date.strftime('%Y/%m/%d')}（未來 {days_ahead} 天）"
             },
             "total_count": len(activities),
             "activities": activities,
         }
 
     except Exception as e:
-        logger.error(f"查詢近期活動失敗: {e}")
+        logger.error("查詢近期活動失敗: %s", e)
         return {
             "success": False,
             "error": str(e),
@@ -240,8 +256,9 @@ DATABASE_TOOLS_DEFINITIONS = [
         "function": {
             "name": "get_past_activities",
             "description": (
-                "查詢過去的活動（發布時間在今天之前）。"
+                "查詢過去的活動（活動日期在今天之前）。"
                 "用於回答「過去有什麼活動」「之前辦過什麼」等問題。"
+                "優先使用活動日期（event_date），若無則使用發布日期（publish_date）。"
             ),
             "parameters": {
                 "type": "object",
@@ -266,9 +283,10 @@ DATABASE_TOOLS_DEFINITIONS = [
         "function": {
             "name": "get_recent_activities",
             "description": (
-                "查詢近期活動（發布時間在今天到未來 N 天內）。"
+                "查詢近期活動（活動日期在今天到未來 N 天內）。"
                 "用於回答「最近有什麼活動」「近期活動」「接下來有什麼」等問題。"
                 "🔴 重要：這是查詢「未來活動」的主要工具，當用戶問近期/最近活動時必須使用。"
+                "優先使用活動日期（event_date），若無則使用發布日期（publish_date）。"
             ),
             "parameters": {
                 "type": "object",

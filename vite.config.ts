@@ -50,8 +50,11 @@ export default defineConfig({
     open: false,
     allowedHosts: ['localhost', '35.212.208.67', 'youthafterwork.com'],
     hmr: {
-      clientPort: 3000,
-      host: '35.212.208.67',
+      // 只在明确需要时配置外部访问
+      // 生产环境构建时会自动排除 HMR 代码
+      clientPort: process.env.VITE_HMR_PORT ? parseInt(process.env.VITE_HMR_PORT) : 3000,
+      // 注释掉固定 host，让 Vite 自动检测
+      // host: '35.212.208.67',
     },
     proxy: {
       '/api': { target: BACKEND_URL, changeOrigin: false, secure: false },
